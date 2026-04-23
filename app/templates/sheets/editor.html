@@ -15,7 +15,10 @@
     <a href="{{ url_for('sheets_list') }}" class="btn btn-default btn-sm">
       <span class="glyphicon glyphicon-chevron-left"></span> My Sheets
     </a>
-    <strong style="margin-left:8px;">{{ sheet.name }}</strong>
+    <strong id="sheet-name-display" style="margin-left:8px; cursor:pointer;" title="Click to rename">{{ sheet.name }}</strong>
+    <input id="sheet-name-input" type="text" class="form-control input-sm no-print"
+           style="display:none; margin-left:8px; width:200px; display:none;"
+           maxlength="200" value="{{ sheet.name }}">
   </div>
   <div class="controls-center">
     <form action="{{ url_for('sheets_resize', sheet_id=sheet.id) }}" method="post"
@@ -73,7 +76,7 @@
                  class="sticker-img">
           {% else %}
             <div class="cell-placeholder">
-              <span class="glyphicon glyphicon-plus-sign"></span>
+              <span class="glyphicon glyphicon-record"></span>
             </div>
           {% endif %}
           <div class="cell-overlay no-print"></div>
@@ -94,15 +97,27 @@
       <div class="modal-body">
         <!-- Generate panel -->
         <div id="generate-panel">
-          <div class="form-group">
-            <label for="promptInput">What should this sticker be?</label>
-            <textarea id="promptInput" class="form-control" rows="3"
-                      placeholder="e.g. a happy dinosaur"></textarea>
+          <!-- Listening overlay -->
+          <div id="listening-overlay" style="display:none; text-align:center; padding:12px 0 8px;">
+            <p class="text-muted" style="margin-bottom:10px;">
+              <span class="glyphicon glyphicon-record" style="color:#d9534f;"></span>
+              <strong> Listening…</strong>
+            </p>
+            <button id="btn-stop-listening" type="button" class="btn btn-danger btn-lg btn-block">
+              <span class="glyphicon glyphicon-stop"></span> Stop
+            </button>
           </div>
-          <button id="btn-generate" class="btn btn-success btn-block">
-            <span id="generate-spinner" class="glyphicon glyphicon-refresh" style="display:none;"></span>
-            Generate
-          </button>
+          <div id="prompt-area">
+            <div class="form-group">
+              <label for="promptInput">What should this sticker be?</label>
+              <textarea id="promptInput" class="form-control" rows="3"
+                        placeholder="e.g. a happy dinosaur"></textarea>
+            </div>
+            <button id="btn-generate" class="btn btn-success btn-block btn-lg">
+              <span id="generate-spinner" class="glyphicon glyphicon-refresh" style="display:none;"></span>
+              Generate
+            </button>
+          </div>
         </div>
         <!-- Cell actions panel (shown for filled cells) -->
         <div id="action-panel" style="display:none;">
@@ -115,6 +130,9 @@
           <button id="btn-copy-all" class="btn btn-default btn-block" style="margin-bottom:6px;">
             <span class="glyphicon glyphicon-th"></span> Copy to All Cells
           </button>
+          <button id="btn-copy-to-new-sheet" class="btn btn-primary btn-block" style="margin-bottom:6px;">
+            <span class="glyphicon glyphicon-new-window"></span> Copy to New Sheet
+          </button>
           <button id="btn-delete-sticker" class="btn btn-danger btn-block">
             <span class="glyphicon glyphicon-trash"></span> Delete
           </button>
@@ -126,13 +144,25 @@
           </button>
           <hr>
           <p class="text-muted text-center small">or generate a new one:</p>
-          <div class="form-group">
-            <textarea id="promptInputPaste" class="form-control" rows="3"
-                      placeholder="e.g. a happy dinosaur"></textarea>
+          <!-- Listening overlay (paste panel) -->
+          <div id="listening-overlay-paste" style="display:none; text-align:center; padding:12px 0 8px;">
+            <p class="text-muted" style="margin-bottom:10px;">
+              <span class="glyphicon glyphicon-record" style="color:#d9534f;"></span>
+              <strong> Listening…</strong>
+            </p>
+            <button id="btn-stop-listening-paste" type="button" class="btn btn-danger btn-lg btn-block">
+              <span class="glyphicon glyphicon-stop"></span> Stop
+            </button>
           </div>
-          <button id="btn-generate-paste" class="btn btn-default btn-block">
-            Generate New
-          </button>
+          <div id="prompt-area-paste">
+            <div class="form-group">
+              <textarea id="promptInputPaste" class="form-control" rows="3"
+                        placeholder="e.g. a happy dinosaur"></textarea>
+            </div>
+            <button id="btn-generate-paste" class="btn btn-success btn-block btn-lg">
+              Generate New
+            </button>
+          </div>
         </div>
       </div>
     </div>

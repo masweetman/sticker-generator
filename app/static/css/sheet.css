@@ -100,6 +100,35 @@
   to   { transform: rotate(360deg); }
 }
 
+/* Mic / record icon on empty cells */
+.cell-placeholder .glyphicon-record {
+  color: #aaa;
+  font-size: 1.6em;
+}
+
+.sticker-cell:hover .cell-placeholder .glyphicon-record {
+  color: #5bc0de;
+}
+
+/* Listening overlay pulse */
+#listening-overlay .glyphicon-record,
+#listening-overlay-paste .glyphicon-record {
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+
+/* Mic button active (listening) state — kept for any future use */
+.btn-mic-active {
+  background-color: #d9534f !important;
+  border-color: #d43f3a !important;
+  color: #fff !important;
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
 /* ── Print styles ──────────────────────────────────────────────────────────── */
 @media print {
   @page {

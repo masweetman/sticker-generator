@@ -6,6 +6,69 @@
   var provider = window.PROVIDER || 'pollinations';
   var boundingPrompt = window.BOUNDING_PROMPT || '[INSERT SUBJECT HERE]';
 
+  // ── Inline sheet rename ───────────────────────────────────────────────────
+  var sheetNameDisplay = document.getElementById('sheet-name-display');
+  var sheetNameInput = document.getElementById('sheet-name-input');
+
+  function showRenameInput() {
+    sheetNameInput.value = sheetNameDisplay.textContent.trim();
+    sheetNameDisplay.style.display = 'none';
+    sheetNameInput.style.display = '';
+    sheetNameInput.focus();
+    sheetNameInput.select();
+  }
+
+  function commitRename() {
+    var newName = sheetNameInput.value.trim();
+    if (!newName) {
+      cancelRename();
+      return;
+    }
+    if (newName === sheetNameDisplay.textContent.trim()) {
+      cancelRename();
+      return;
+    }
+    fetch('/api/rename-sheet/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({ sheet_id: sheetId, name: newName })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.success) {
+        sheetNameDisplay.textContent = data.name;
+        document.title = data.name;
+      } else {
+        alert('Could not rename: ' + (data.error || 'Unknown error'));
+      }
+      sheetNameInput.style.display = 'none';
+      sheetNameDisplay.style.display = '';
+    })
+    .catch(function (e) {
+      alert('Network error: ' + e);
+      cancelRename();
+    });
+  }
+
+  function cancelRename() {
+    sheetNameInput.style.display = 'none';
+    sheetNameDisplay.style.display = '';
+  }
+
+  if (sheetNameDisplay) {
+    sheetNameDisplay.addEventListener('click', showRenameInput);
+  }
+  if (sheetNameInput) {
+    sheetNameInput.addEventListener('blur', commitRename);
+    sheetNameInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+      if (e.key === 'Escape') { cancelRename(); }
+    });
+  }
+
   // ── Provider switcher ─────────────────────────────────────────────────────
   var providerSelect = document.getElementById('provider-select');
   if (providerSelect) {
@@ -60,11 +123,104 @@
   var btnRegenerate = document.getElementById('btn-regenerate');
   var btnCopySticker = document.getElementById('btn-copy-sticker');
   var btnCopyAll = document.getElementById('btn-copy-all');
+  var btnCopyToNewSheet = document.getElementById('btn-copy-to-new-sheet');
   var btnDeleteSticker = document.getElementById('btn-delete-sticker');
   var btnPasteSticker = document.getElementById('btn-paste-sticker');
 
+  var btnMic = null;      // no longer in HTML
+  var btnMicPaste = null; // no longer in HTML
+
   var btnCopyMode = document.getElementById('btn-copy-mode');
   var copyModeLabel = document.getElementById('copy-mode-label');
+
+  var listeningOverlay = document.getElementById('listening-overlay');
+  var listeningOverlayPaste = document.getElementById('listening-overlay-paste');
+  var promptArea = document.getElementById('prompt-area');
+  var promptAreaPaste = document.getElementById('prompt-area-paste');
+  var btnStopListening = document.getElementById('btn-stop-listening');
+  var btnStopListeningPaste = document.getElementById('btn-stop-listening-paste');
+
+  // ── Speech recognition ────────────────────────────────────────────────────
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var activeRecognition = null;
+  var silenceTimer = null;
+
+  function setListeningUI(overlay, area, on) {
+    overlay.style.display = on ? '' : 'none';
+    area.style.display = on ? 'none' : '';
+  }
+
+  function startListening(targetInput, overlay, area) {
+    if (!SpeechRecognition) return;
+    if (activeRecognition) { activeRecognition.stop(); return; }
+
+    var recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.continuous = true;   // keep mic open until silence or stop
+    recognition.interimResults = true;
+
+    activeRecognition = recognition;
+    setListeningUI(overlay, area, true);
+
+    function resetSilenceTimer() {
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(function () {
+        if (activeRecognition) activeRecognition.stop();
+      }, 3000);
+    }
+
+    recognition.onstart = function () {
+      resetSilenceTimer();
+    };
+
+    recognition.onspeechstart = function () {
+      resetSilenceTimer();
+    };
+
+    recognition.onresult = function (e) {
+      resetSilenceTimer();
+      // Use the latest final result; fall back to interim
+      var transcript = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          transcript = e.results[i][0].transcript;
+        }
+      }
+      if (transcript) targetInput.value = transcript;
+    };
+
+    recognition.onerror = function (e) {
+      clearTimeout(silenceTimer);
+      if (e.error !== 'aborted' && e.error !== 'no-speech') {
+        alert('Microphone error: ' + e.error);
+      }
+    };
+
+    recognition.onend = function () {
+      clearTimeout(silenceTimer);
+      activeRecognition = null;
+      setListeningUI(overlay, area, false);
+    };
+
+    recognition.start();
+  }
+
+  function stopListening() {
+    clearTimeout(silenceTimer);
+    if (activeRecognition) activeRecognition.stop();
+  }
+
+  if (btnStopListening) {
+    btnStopListening.addEventListener('click', stopListening);
+  }
+  if (btnStopListeningPaste) {
+    btnStopListeningPaste.addEventListener('click', stopListening);
+  }
+
+  // Stop listening when the modal is closed
+  $modal.on('hide.bs.modal', function () {
+    stopListening();
+  });
 
   // ── Copy mode toggle ──────────────────────────────────────────────────────
   btnCopyMode.addEventListener('click', function () {
@@ -112,7 +268,12 @@
         showModal('Generate Sticker — (' + row + ',' + col + ')');
         showPanel('generate');
         promptInput.value = '';
-        promptInput.focus();
+        // Auto-start listening for empty cells if browser supports it
+        if (SpeechRecognition) {
+          startListening(promptInput, listeningOverlay, promptArea);
+        } else {
+          promptInput.focus();
+        }
       }
     });
   });
@@ -283,6 +444,30 @@
         $modal.modal('hide');
       } else {
         alert('Error: ' + (data.error || 'Unknown'));
+      }
+    })
+    .catch(function (e) { alert('Network error: ' + e); });
+  });
+
+  // ── Copy to new sheet ─────────────────────────────────────────────────────
+  btnCopyToNewSheet.addEventListener('click', function () {
+    var srcRow = parseInt(activeCell.dataset.row, 10);
+    var srcCol = parseInt(activeCell.dataset.col, 10);
+
+    fetch('/api/copy-to-new-sheet/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({ sheet_id: sheetId, row: srcRow, col: srcCol })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.success) {
+        window.location.href = data.sheet_url;
+      } else {
+        alert('Error: ' + (data.error || 'Unknown error'));
       }
     })
     .catch(function (e) { alert('Network error: ' + e); });

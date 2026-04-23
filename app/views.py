@@ -439,6 +439,67 @@ def api_copy():
 
 # ── User preferences ──────────────────────────────────────────────────────────
 
+@app.route('/api/rename-sheet/', methods=['POST'])
+@login_required
+def api_rename_sheet():
+    data = request.get_json(force=True)
+    sheet_id = data.get('sheet_id')
+    new_name = (data.get('name') or '').strip()
+    if not new_name:
+        return jsonify(success=False, error='Name cannot be empty.'), 400
+    if len(new_name) > 200:
+        return jsonify(success=False, error='Name too long.'), 400
+    sheet = _get_own_sheet_or_400(sheet_id)
+    if sheet is None:
+        return jsonify(success=False, error='Sheet not found.'), 404
+    sheet.name = new_name
+    db.session.commit()
+    return jsonify(success=True, name=new_name)
+
+
+@app.route('/api/copy-to-new-sheet/', methods=['POST'])
+@login_required
+def api_copy_to_new_sheet():
+    data = request.get_json(force=True)
+    sheet_id = data.get('sheet_id')
+    src_row = data.get('row')
+    src_col = data.get('col')
+
+    src_sheet = _get_own_sheet_or_400(sheet_id)
+    if src_sheet is None:
+        return jsonify(success=False, error='Sheet not found.'), 404
+
+    src_sticker = Sticker.query.filter_by(
+        sheet_id=sheet_id, row=src_row, col=src_col).first()
+    if src_sticker is None or not src_sticker.image_path:
+        return jsonify(success=False, error='Source sticker has no image.'), 404
+
+    # Create the new sheet
+    new_sheet = StickerSheet(
+        user_id=current_user.id,
+        name=f'Copy of {src_sheet.name}',
+        rows=src_sheet.rows,
+        cols=src_sheet.cols,
+    )
+    db.session.add(new_sheet)
+    db.session.flush()  # get new_sheet.id
+
+    # Copy the image file to position (0, 0) in the new sheet
+    import shutil
+    src_abs = os.path.join(current_app.root_path, src_sticker.image_path)
+    dst_rel, dst_abs = _sticker_path(new_sheet.id, 0, 0)
+    os.makedirs(os.path.dirname(dst_abs), exist_ok=True)
+    shutil.copy2(src_abs, dst_abs)
+
+    new_sticker = Sticker(sheet_id=new_sheet.id, row=0, col=0)
+    new_sticker.prompt = src_sticker.prompt
+    new_sticker.image_path = dst_rel
+    db.session.add(new_sticker)
+    db.session.commit()
+
+    return jsonify(success=True, sheet_url=url_for('sheets_editor', sheet_id=new_sheet.id))
+
+
 @app.route('/api/user/provider/', methods=['POST'])
 @login_required
 def api_set_user_provider():
