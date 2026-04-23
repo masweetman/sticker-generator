@@ -6,7 +6,7 @@ from flask import (url_for, redirect, render_template, flash, g,
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import app, lm, db
-from app.forms import LoginForm, RegisterForm, StickerSheetForm
+from app.forms import LoginForm, RegisterForm, StickerSheetForm, ProfileForm
 from app.models import User, Settings, StickerSheet, Sticker
 
 
@@ -73,6 +73,42 @@ def register():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+
+@app.route('/profile/', methods=['GET', 'POST'])
+@login_required
+def profile():
+    form = ProfileForm(obj=current_user)
+    if form.validate_on_submit():
+        # Password change requested
+        if form.new_password.data:
+            if not form.current_password.data:
+                flash('Enter your current password to set a new one.', 'danger')
+                return render_template('profile.html', form=form)
+            if not check_password_hash(current_user.password, form.current_password.data):
+                flash('Current password is incorrect.', 'danger')
+                return render_template('profile.html', form=form)
+            current_user.password = generate_password_hash(form.new_password.data)
+
+        # Check email uniqueness if changed
+        new_email = form.email.data.strip() or None
+        if new_email and new_email != current_user.email:
+            if User.query.filter(User.email == new_email, User.id != current_user.id).first():
+                flash('That email address is already in use.', 'danger')
+                return render_template('profile.html', form=form)
+
+        current_user.name = form.name.data.strip() or None
+        current_user.email = new_email
+        db.session.commit()
+        flash('Profile updated.', 'success')
+        return redirect(url_for('profile'))
+
+    # Pre-populate fields on GET (obj=current_user handles name/email;
+    # password fields should always be blank)
+    form.current_password.data = ''
+    form.new_password.data = ''
+    form.confirm_password.data = ''
+    return render_template('profile.html', form=form)
 
 
 # ── Sheet management ──────────────────────────────────────────────────────────

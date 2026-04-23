@@ -22,6 +22,39 @@ lm = LoginManager()
 lm.init_app(app)
 lm.login_view = 'login'
 
+
+@lm.unauthorized_handler
+def unauthorized():
+    from flask import request as _req, jsonify, redirect, url_for
+    if _req.path.startswith('/api/'):
+        return jsonify(success=False, error='Login required.'), 401
+    return redirect(url_for('login'))
+
+
+@app.errorhandler(400)
+def bad_request(e):
+    from flask import request as _req, jsonify
+    if _req.path.startswith('/api/'):
+        return jsonify(success=False, error=str(e.description)), 400
+    return e
+
+
+@app.errorhandler(404)
+def not_found(e):
+    from flask import request as _req, jsonify
+    if _req.path.startswith('/api/'):
+        return jsonify(success=False, error='Not found.'), 404
+    return e
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    from flask import request as _req, jsonify
+    if _req.path.startswith('/api/'):
+        return jsonify(success=False, error='Internal server error.'), 500
+    return e
+
+
 from app import views, models
 from app.admin_views import register_admin_views
 
