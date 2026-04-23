@@ -1,6 +1,6 @@
 from flask import redirect, url_for
 from flask_admin.contrib.sqla import ModelView
-from flask_admin import AdminIndexView, expose
+from flask_admin import AdminIndexView
 from flask_login import current_user
 from wtforms import SelectField
 from app import db
@@ -8,11 +8,11 @@ from app.models import User, Settings, StickerSheet, Sticker
 
 
 class SecureAdminIndexView(AdminIndexView):
-    @expose('/')
-    def index(self):
-        if not current_user.is_authenticated or not current_user.is_admin:
-            return redirect(url_for('login'))
-        return super().index()
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.is_admin
+
+    def inaccessible_callback(self, name, **kwargs):
+        return redirect(url_for('login'))
 
 
 class SecureModelView(ModelView):

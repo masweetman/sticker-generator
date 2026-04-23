@@ -1,4 +1,5 @@
 # -*- encoding: utf-8 -*-
+import os
 import click
 from flask import Flask
 from flask_bootstrap import Bootstrap
@@ -11,7 +12,7 @@ from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
 
-app.config.from_object('app.configuration.DevelopmentConfig')
+app.config.from_object(os.environ.get('FLASK_CONFIG', 'app.configuration.DevelopmentConfig'))
 
 bs = Bootstrap(app)
 db = SQLAlchemy(app)
@@ -56,9 +57,10 @@ def internal_error(e):
 
 
 from app import views, models
-from app.admin_views import register_admin_views
+from app.admin_views import register_admin_views, SecureAdminIndexView
 
-admin = Admin(app, name='Sticker Admin', theme=Bootstrap4Theme())
+admin = Admin(app, name='Sticker Admin', theme=Bootstrap4Theme(),
+              index_view=SecureAdminIndexView())
 register_admin_views(admin)
 
 
