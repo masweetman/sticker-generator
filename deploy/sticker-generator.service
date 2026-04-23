@@ -3,9 +3,10 @@ Description=Sticker Generator Flask App
 After=network.target
 
 [Service]
-User=www-data
-Group=www-data
+User=nobody
+Group=nogroup
 WorkingDirectory=/srv/sticker-generator
+EnvironmentFile=/srv/sticker-generator/.env
 Environment="FLASK_APP=run.py"
 Environment="FLASK_ENV=production"
 ExecStart=/srv/sticker-generator/venv/bin/gunicorn \
