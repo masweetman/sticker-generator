@@ -1,7 +1,10 @@
 # -*- encoding: utf-8 -*-
 import os
+import json
+import logging
 import click
-from flask import Flask
+from datetime import datetime, timezone
+from flask import Flask, request as _flask_request
 from flask_bootstrap import Bootstrap
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -9,6 +12,8 @@ from flask_login import LoginManager
 from flask_admin import Admin
 from flask_admin.theme import Bootstrap4Theme
 from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 
@@ -18,6 +23,13 @@ bs = Bootstrap(app)
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 csrf = CSRFProtect(app)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri='memory://',
+)
 
 lm = LoginManager()
 lm.init_app(app)
@@ -56,12 +68,46 @@ def internal_error(e):
     return e
 
 
+# ── Audit logging (NIST SP 800-53 Rev. 5 AU) ────────────────────────────────
+
+def audit_log(event: str, user_id=None, extra: dict | None = None):
+    """Emit a structured JSON audit event to the 'audit' logger."""
+    record = {
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'event': event,
+        'user_id': user_id,
+        'ip': _flask_request.remote_addr if _flask_request else None,
+        **(extra or {}),
+    }
+    logger = logging.getLogger('audit')
+    logger.setLevel(logging.INFO)
+    logger.info(json.dumps(record))
+
+
 from app import views, models
 from app.admin_views import register_admin_views, SecureAdminIndexView
 
 admin = Admin(app, name='Sticker Admin', theme=Bootstrap4Theme(),
               index_view=SecureAdminIndexView())
 register_admin_views(admin)
+
+
+# ── Security headers (OWASP / NIST SP 800-53 Rev. 5 SC) ─────────────────────
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "object-src 'none'; "
+        "frame-ancestors 'none';"
+    )
+    return response
 
 
 def _ensure_db_and_seed():

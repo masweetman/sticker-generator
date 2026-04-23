@@ -18,6 +18,8 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
     preferred_provider = db.Column(db.String(50), nullable=True)
+    two_factor_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    two_factor_secret = db.Column(db.String(64), nullable=True)
     sheets = db.relationship('StickerSheet', backref='owner', lazy='dynamic',
                              cascade='all, delete-orphan')
 

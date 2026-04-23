@@ -1,12 +1,15 @@
+import io
 import os
 import uuid
+import base64
 import requests as http_requests
 from flask import (url_for, redirect, render_template, flash, g,
-                   jsonify, request, abort, current_app)
+                   jsonify, request, abort, current_app, session)
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
-from app import app, lm, db
-from app.forms import LoginForm, RegisterForm, StickerSheetForm, ProfileForm
+from app import app, lm, db, limiter, audit_log
+from app.forms import (LoginForm, RegisterForm, StickerSheetForm, ProfileForm,
+                       TwoFactorVerifyForm, TwoFactorSetupForm, TwoFactorDisableForm)
 from app.models import User, Settings, StickerSheet, Sticker
 
 
@@ -34,6 +37,7 @@ def index():
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 @app.route('/login/', methods=['GET', 'POST'])
+@limiter.limit('10 per minute', methods=['POST'])
 def login():
     if g.user is not None and g.user.is_authenticated:
         return redirect(url_for('sheets_list'))
@@ -41,8 +45,15 @@ def login():
     if form.validate_on_submit():
         user = User.query.filter_by(user=form.user.data).first()
         if user and check_password_hash(user.password, form.password.data):
+            if user.two_factor_enabled:
+                # Store pending user ID; require TOTP before creating full session
+                session['_2fa_pending_user_id'] = user.id
+                audit_log('login_2fa_challenge', user_id=user.id)
+                return redirect(url_for('login_2fa'))
             login_user(user)
+            audit_log('login_success', user_id=user.id)
             return redirect(url_for('sheets_list'))
+        audit_log('login_failure', extra={'username': form.user.data})
         flash('Invalid username or password.', 'danger')
     return render_template('login.html', title='Sign In', form=form)
 
@@ -64,6 +75,7 @@ def register():
             )
             db.session.add(u)
             db.session.commit()
+            audit_log('register', user_id=u.id)
             login_user(u)
             return redirect(url_for('sheets_list'))
     return render_template('register.html', title='Register', form=form)
@@ -71,6 +83,7 @@ def register():
 
 @app.route('/logout/')
 def logout():
+    audit_log('logout', user_id=current_user.id if current_user.is_authenticated else None)
     logout_user()
     return redirect(url_for('login'))
 
@@ -79,15 +92,16 @@ def logout():
 @login_required
 def profile():
     form = ProfileForm(obj=current_user)
+    disable_form = TwoFactorDisableForm(prefix='disable')
     if form.validate_on_submit():
         # Password change requested
         if form.new_password.data:
             if not form.current_password.data:
                 flash('Enter your current password to set a new one.', 'danger')
-                return render_template('profile.html', form=form)
+                return render_template('profile.html', form=form, disable_form=disable_form)
             if not check_password_hash(current_user.password, form.current_password.data):
                 flash('Current password is incorrect.', 'danger')
-                return render_template('profile.html', form=form)
+                return render_template('profile.html', form=form, disable_form=disable_form)
             current_user.password = generate_password_hash(form.new_password.data)
 
         # Check email uniqueness if changed
@@ -95,7 +109,7 @@ def profile():
         if new_email and new_email != current_user.email:
             if User.query.filter(User.email == new_email, User.id != current_user.id).first():
                 flash('That email address is already in use.', 'danger')
-                return render_template('profile.html', form=form)
+                return render_template('profile.html', form=form, disable_form=disable_form)
 
         current_user.name = form.name.data.strip() or None
         current_user.email = new_email
@@ -108,7 +122,7 @@ def profile():
     form.current_password.data = ''
     form.new_password.data = ''
     form.confirm_password.data = ''
-    return render_template('profile.html', form=form)
+    return render_template('profile.html', form=form, disable_form=disable_form)
 
 
 # ── Sheet management ──────────────────────────────────────────────────────────
@@ -134,6 +148,8 @@ def sheets_new():
         )
         db.session.add(sheet)
         db.session.commit()
+        audit_log('sheet_create', user_id=current_user.id,
+                  extra={'sheet_id': sheet.id, 'name': sheet.name})
         return redirect(url_for('sheets_editor', sheet_id=sheet.id))
     return render_template('sheets/new.html', form=form)
 
@@ -160,6 +176,7 @@ def sheets_delete(sheet_id):
     _delete_sheet_images(sheet)
     db.session.delete(sheet)
     db.session.commit()
+    audit_log('sheet_delete', user_id=current_user.id, extra={'sheet_id': sheet_id})
     flash(f'"{sheet.name}" deleted.', 'success')
     return redirect(url_for('sheets_list'))
 
@@ -289,6 +306,8 @@ def api_generate():
     sticker.image_path = rel_path
     db.session.commit()
 
+    audit_log('sticker_generate', user_id=current_user.id,
+              extra={'sheet_id': sheet_id, 'row': row, 'col': col, 'provider': provider})
     return jsonify(success=True, image_url='/' + rel_path)
 
 
@@ -393,6 +412,8 @@ def api_sticker_delete(sheet_id, row, col):
         _delete_sticker_image(sticker)
         db.session.delete(sticker)
         db.session.commit()
+        audit_log('sticker_delete', user_id=current_user.id,
+                  extra={'sheet_id': sheet_id, 'row': row, 'col': col})
     return jsonify(success=True)
 
 
@@ -511,6 +532,106 @@ def api_set_user_provider():
     current_user.preferred_provider = provider
     db.session.commit()
     return jsonify(success=True, provider=provider)
+
+
+# ── 2FA routes ────────────────────────────────────────────────────────────────
+
+@app.route('/login/2fa/', methods=['GET', 'POST'])
+@limiter.limit('10 per minute', methods=['POST'])
+def login_2fa():
+    """Step-2 of login: TOTP verification."""
+    import pyotp
+    pending_id = session.get('_2fa_pending_user_id')
+    if not pending_id:
+        return redirect(url_for('login'))
+    form = TwoFactorVerifyForm()
+    if form.validate_on_submit():
+        user = db.session.get(User, pending_id)
+        if user is None:
+            session.pop('_2fa_pending_user_id', None)
+            return redirect(url_for('login'))
+        totp = pyotp.TOTP(user.two_factor_secret)
+        if totp.verify(form.code.data, valid_window=1):
+            session.pop('_2fa_pending_user_id', None)
+            login_user(user)
+            audit_log('login_success_2fa', user_id=user.id)
+            return redirect(url_for('sheets_list'))
+        audit_log('login_2fa_invalid_code', user_id=user.id)
+        flash('Invalid or expired code. Please try again.', 'danger')
+    return render_template('2fa_verify.html', form=form)
+
+
+@app.route('/profile/2fa/setup/', methods=['GET', 'POST'])
+@login_required
+def profile_2fa_setup():
+    """Show QR code and allow enabling 2FA."""
+    import pyotp
+    import qrcode
+
+    # Generate a new secret only if there isn't one pending setup
+    if 'two_factor_setup_secret' not in session:
+        session['two_factor_setup_secret'] = pyotp.random_base32()
+
+    secret = session['two_factor_setup_secret']
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=current_user.user, issuer_name='Sticker Generator')
+
+    # Build QR code as a base64 data URL
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    qr_data_url = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
+
+    form = TwoFactorSetupForm()
+    if form.validate_on_submit():
+        if not check_password_hash(current_user.password, form.current_password.data):
+            flash('Current password is incorrect.', 'danger')
+            return render_template('2fa_setup.html', form=form, qr=qr_data_url,
+                                   secret=secret)
+        totp_check = pyotp.TOTP(secret)
+        if not totp_check.verify(form.code.data, valid_window=1):
+            audit_log('2fa_enable_invalid_code', user_id=current_user.id)
+            flash('Invalid authenticator code. Please try again.', 'danger')
+            return render_template('2fa_setup.html', form=form, qr=qr_data_url,
+                                   secret=secret)
+        current_user.two_factor_secret = secret
+        current_user.two_factor_enabled = True
+        db.session.commit()
+        session.pop('two_factor_setup_secret', None)
+        audit_log('2fa_enabled', user_id=current_user.id)
+        flash('Two-factor authentication enabled.', 'success')
+        return redirect(url_for('profile'))
+
+    return render_template('2fa_setup.html', form=form, qr=qr_data_url, secret=secret)
+
+
+@app.route('/profile/2fa/disable/', methods=['POST'])
+@login_required
+def profile_2fa_disable():
+    """Disable 2FA — requires current password + valid TOTP code."""
+    import pyotp
+    form = TwoFactorDisableForm(prefix='disable')
+    if form.validate_on_submit():
+        if not current_user.two_factor_enabled:
+            flash('Two-factor authentication is not enabled.', 'warning')
+            return redirect(url_for('profile'))
+        if not check_password_hash(current_user.password, form.current_password.data):
+            audit_log('2fa_disable_wrong_password', user_id=current_user.id)
+            flash('Current password is incorrect.', 'danger')
+            return redirect(url_for('profile'))
+        totp = pyotp.TOTP(current_user.two_factor_secret)
+        if not totp.verify(form.code.data, valid_window=1):
+            audit_log('2fa_disable_invalid_code', user_id=current_user.id)
+            flash('Invalid authenticator code.', 'danger')
+            return redirect(url_for('profile'))
+        current_user.two_factor_enabled = False
+        current_user.two_factor_secret = None
+        db.session.commit()
+        audit_log('2fa_disabled', user_id=current_user.id)
+        flash('Two-factor authentication disabled.', 'success')
+    else:
+        flash('Form submission error. Please try again.', 'danger')
+    return redirect(url_for('profile'))
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

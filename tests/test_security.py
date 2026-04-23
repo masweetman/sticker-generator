@@ -3,9 +3,10 @@ Adversarial and security tests.
 Covers OWASP Top-10 areas relevant to this app:
   - Broken Access Control (cross-user resource access)
   - Injection (SQL injection via form fields)
-  - Security Misconfiguration (CSRF)
+  - Security Misconfiguration (CSRF, security headers)
   - XSS (stored XSS via sheet name)
   - Path Traversal
+  - Rate limiting
 """
 import json
 import pytest
@@ -237,3 +238,44 @@ class TestMalformedInputs:
         r = _json(client_a, 'post', '/api/rename-sheet/',
                   data=json.dumps({'sheet_id': sheet_a, 'name': 'X' * 201}))
         assert r.status_code == 400
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Security response headers (flask.md §10 / OWASP / NIST SP 800-53 SC)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TestSecurityHeaders:
+    """Every response must carry the required security headers."""
+
+    def _get_headers(self, client):
+        r = client.get('/login/')
+        return r.headers
+
+    def test_x_content_type_options_nosniff(self, client):
+        headers = self._get_headers(client)
+        assert headers.get('X-Content-Type-Options') == 'nosniff'
+
+    def test_x_frame_options_deny(self, client):
+        headers = self._get_headers(client)
+        assert headers.get('X-Frame-Options') == 'DENY'
+
+    def test_referrer_policy_set(self, client):
+        headers = self._get_headers(client)
+        assert headers.get('Referrer-Policy') == 'strict-origin-when-cross-origin'
+
+    def test_content_security_policy_present(self, client):
+        headers = self._get_headers(client)
+        csp = headers.get('Content-Security-Policy', '')
+        assert "default-src 'self'" in csp
+
+    def test_csp_frame_ancestors_none(self, client):
+        headers = self._get_headers(client)
+        csp = headers.get('Content-Security-Policy', '')
+        assert "frame-ancestors 'none'" in csp
+
+    def test_headers_present_on_api_response(self, client_a, sheet_a):
+        r = _json(client_a, 'post', '/api/rename-sheet/',
+                  data=json.dumps({'sheet_id': sheet_a, 'name': 'Test'}))
+        assert r.headers.get('X-Content-Type-Options') == 'nosniff'
+        assert r.headers.get('X-Frame-Options') == 'DENY'
+

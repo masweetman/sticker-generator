@@ -8,11 +8,40 @@ class LoginForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
 
 
+class TwoFactorVerifyForm(FlaskForm):
+    """TOTP code entry at login step-2."""
+    code = StringField('Authenticator Code', validators=[
+        DataRequired(),
+        Length(min=6, max=6, message='Code must be exactly 6 digits.'),
+    ])
+
+
+class TwoFactorSetupForm(FlaskForm):
+    """Confirm current password + TOTP code to enable 2FA."""
+    current_password = PasswordField('Current Password', validators=[DataRequired()])
+    code = StringField('Authenticator Code', validators=[
+        DataRequired(),
+        Length(min=6, max=6, message='Code must be exactly 6 digits.'),
+    ])
+
+
+class TwoFactorDisableForm(FlaskForm):
+    """Confirm current password + TOTP code to disable 2FA."""
+    current_password = PasswordField('Current Password', validators=[DataRequired()])
+    code = StringField('Authenticator Code', validators=[
+        DataRequired(),
+        Length(min=6, max=6, message='Code must be exactly 6 digits.'),
+    ])
+
+
 class RegisterForm(FlaskForm):
-    user = StringField('Username', validators=[DataRequired()])
+    user = StringField('Username', validators=[DataRequired(), Length(max=64)])
     name = StringField('Display Name')
     email = StringField('Email')
-    password = PasswordField('Password', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[
+        DataRequired(),
+        Length(min=8, max=64, message='Password must be between 8 and 64 characters.'),
+    ])
 
 
 class StickerSheetForm(FlaskForm):

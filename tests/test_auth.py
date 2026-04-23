@@ -208,3 +208,102 @@ class TestProfile:
         }, follow_redirects=True)
         assert r.status_code == 200
         assert b'already in use' in r.data or b'taken' in r.data.lower()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Password policy (NIST SP 800-63B-4 §5.1.1)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TestPasswordPolicy:
+    def test_register_password_too_short_is_rejected(self, client):
+        """Passwords shorter than 8 characters must be rejected on registration."""
+        r = client.post('/register/', data={
+            'user': 'shortpassuser', 'name': '', 'email': '', 'password': 'abc123',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        with client.session_transaction() as sess:
+            assert '_user_id' not in sess
+
+    def test_register_password_exactly_8_chars_is_accepted(self, client):
+        """A password of exactly 8 characters must be accepted."""
+        r = client.post('/register/', data={
+            'user': 'okpassuser', 'name': '', 'email': '', 'password': 'abcd1234',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        with client.session_transaction() as sess:
+            assert '_user_id' in sess
+
+    def test_register_password_max_64_chars_is_accepted(self, client):
+        """A password of exactly 64 characters must be accepted."""
+        r = client.post('/register/', data={
+            'user': 'maxpassuser', 'name': '', 'email': '',
+            'password': 'A' * 64,
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        with client.session_transaction() as sess:
+            assert '_user_id' in sess
+
+    def test_register_password_over_64_chars_is_rejected(self, client):
+        """A password over 64 characters must be rejected."""
+        r = client.post('/register/', data={
+            'user': 'toolonguser', 'name': '', 'email': '',
+            'password': 'A' * 65,
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        with client.session_transaction() as sess:
+            assert '_user_id' not in sess
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Audit logging (flask.md §11 / NIST SP 800-53 AU)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TestAuditLogging:
+    def test_login_success_emits_audit_event(self, client, user_a):
+        import logging
+        import json as _json_mod
+        from unittest.mock import patch as _patch
+
+        events = []
+        class CapturingHandler(logging.Handler):
+            def emit(self, record):
+                events.append(record.getMessage())
+
+        handler = CapturingHandler()
+        audit_logger = logging.getLogger('audit')
+        audit_logger.addHandler(handler)
+        try:
+            client.post('/login/', data={
+                'user': user_a.username, 'password': user_a.password,
+            })
+        finally:
+            audit_logger.removeHandler(handler)
+
+        parsed = [_json_mod.loads(e) for e in events]
+        success_events = [e for e in parsed if e.get('event') == 'login_success']
+        assert success_events, 'Expected a login_success audit event'
+        assert success_events[0]['user_id'] == user_a.id
+
+    def test_login_failure_emits_audit_event(self, client, user_a):
+        import logging
+        import json as _json_mod
+
+        events = []
+        class CapturingHandler(logging.Handler):
+            def emit(self, record):
+                events.append(record.getMessage())
+
+        handler = CapturingHandler()
+        audit_logger = logging.getLogger('audit')
+        audit_logger.addHandler(handler)
+        try:
+            client.post('/login/', data={
+                'user': user_a.username, 'password': 'wrong',
+            })
+        finally:
+            audit_logger.removeHandler(handler)
+
+        parsed = [_json_mod.loads(e) for e in events]
+        failure_events = [e for e in parsed if e.get('event') == 'login_failure']
+        assert failure_events, 'Expected a login_failure audit event'
+
