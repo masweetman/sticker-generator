@@ -12,8 +12,7 @@ A web application for creating printable sticker sheets with AI-generated images
 
 ## Requirements
 
-- Python 3.8+
-- [pipenv](https://pipenv.pypa.io/)
+- Python 3.11+
 
 ## Local Installation
 
@@ -22,13 +21,15 @@ Clone the repository and install dependencies:
 ```bash
 git clone <repo-url>
 cd sticker-generator
-pipenv install
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 Run the development server:
 
 ```bash
-pipenv run flask --app run.py run
+flask --app run.py run
 ```
 
 Open `http://localhost:5000` in your browser.
@@ -80,11 +81,7 @@ rsync -av --exclude='.git' --exclude='instance/' . user@server:/srv/sticker-gene
 ```bash
 cd /srv/sticker-generator
 python3 -m venv venv
-venv/bin/pip install pipenv
-venv/bin/pipenv install --deploy --ignore-pipfile
-# or simply:
-venv/bin/pip install flask flask-admin flask-migrate flask-bootstrap \
-    flask-cache flask-login flask-sqlalchemy flask-wtf requests werkzeug gunicorn
+venv/bin/pip install -r requirements.txt
 ```
 
 ### 3. Set the secret key

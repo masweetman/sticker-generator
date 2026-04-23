@@ -1,0 +1,11 @@
+flask
+flask-admin
+flask-migrate
+flask-bootstrap
+flask-cache
+flask-login
+flask-sqlalchemy
+flask-wtf
+requests
+werkzeug
+gunicorn
