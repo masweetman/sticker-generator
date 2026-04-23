@@ -1,0 +1,154 @@
+/* ── Controls bar ─────────────────────────────────────────────────────────── */
+.controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.controls-left,
+.controls-center,
+.controls-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resize-form label {
+  margin-bottom: 0;
+  margin-right: 4px;
+}
+
+/* ── Sheet viewport ────────────────────────────────────────────────────────── */
+.sheet-viewport {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 40px;
+  background: #e8e8e8;
+  min-height: calc(100vh - 160px);
+}
+
+/* 8.5×11 inches at 96 dpi = 816×1056 px */
+.sticker-sheet {
+  width: 816px;
+  height: 1056px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-rows: repeat(var(--rows), 1fr);
+  box-sizing: border-box;
+  padding: 8px;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Individual sticker cell ───────────────────────────────────────────────── */
+.sticker-cell {
+  position: relative;
+  border: 2px dashed #ccc;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafafa;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.sticker-cell:hover {
+  border-color: #5bc0de;
+  background: #f0faff;
+}
+
+.sticker-cell.copy-source {
+  border-color: #f0ad4e;
+  box-shadow: inset 0 0 0 2px #f0ad4e;
+}
+
+.sticker-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.cell-placeholder {
+  color: #ccc;
+  font-size: 2em;
+  pointer-events: none;
+}
+
+.cell-overlay {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+
+/* Spinner animation */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Print styles ──────────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0;
+  }
+
+  .no-print,
+  .navbar,
+  .navbar-spacer,
+  .controls-bar {
+    display: none !important;
+  }
+
+  .container-fluid {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body {
+    padding-top: 0 !important;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  .sheet-viewport {
+    display: block;
+    padding: 0;
+    background: none;
+    min-height: unset;
+  }
+
+  .sticker-sheet {
+    width: 100%;
+    height: 100vh;
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+
+  .sticker-cell {
+    border: 1px solid #ddd;
+    cursor: default;
+  }
+
+  .cell-placeholder {
+    display: none;
+  }
+}

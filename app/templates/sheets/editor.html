@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}{{ sheet.name }}{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sheet.css') }}">
+{% endblock %}
+
+{% block main_content %}
+<!-- Controls bar -->
+<div class="controls-bar no-print">
+  <div class="controls-left">
+    <a href="{{ url_for('sheets_list') }}" class="btn btn-default btn-sm">
+      <span class="glyphicon glyphicon-chevron-left"></span> My Sheets
+    </a>
+    <strong style="margin-left:8px;">{{ sheet.name }}</strong>
+  </div>
+  <div class="controls-center">
+    <form action="{{ url_for('sheets_resize', sheet_id=sheet.id) }}" method="post"
+          class="form-inline resize-form">
+      {{ resize_form.hidden_tag() }}
+      <div class="form-group">
+        <label>Rows</label>
+        <input type="number" name="rows" value="{{ sheet.rows }}" min="1" max="10"
+               class="form-control input-sm" style="width:60px;">
+      </div>
+      <div class="form-group">
+        <label>Cols</label>
+        <input type="number" name="cols" value="{{ sheet.cols }}" min="1" max="10"
+               class="form-control input-sm" style="width:60px;">
+      </div>
+      <button type="submit" class="btn btn-default btn-sm"
+              onclick="return confirm('Resizing may remove stickers outside the new grid. Continue?')">
+        Resize
+      </button>
+    </form>
+  </div>
+  <div class="controls-right">
+    <select id="provider-select" class="form-control input-sm no-print"
+            style="width:auto; display:inline-block;"
+            title="Your image generation provider">
+      <option value="pollinations" {% if provider == 'pollinations' %}selected{% endif %}>
+        Pollinations.ai
+      </option>
+      <option value="puter" {% if provider == 'puter' %}selected{% endif %}>
+        Puter.js (GPT Image)
+      </option>
+    </select>
+    <button id="btn-copy-mode" class="btn btn-warning btn-sm">
+      <span class="glyphicon glyphicon-copy"></span> Copy Mode: <span id="copy-mode-label">Off</span>
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="window.print()">
+      <span class="glyphicon glyphicon-print"></span> Print
+    </button>
+  </div>
+</div>
+
+<!-- Sheet canvas -->
+<div class="sheet-viewport">
+  <div class="sticker-sheet"
+       style="--rows:{{ sheet.rows }}; --cols:{{ sheet.cols }};">
+    {% for r in range(sheet.rows) %}
+      {% for c in range(sheet.cols) %}
+        {% set sticker = stickers.get((r, c)) %}
+        <div class="sticker-cell"
+             data-row="{{ r }}" data-col="{{ c }}"
+             data-sheet="{{ sheet.id }}"
+             {% if sticker and sticker.image_path %}data-has-sticker="1"{% endif %}>
+          {% if sticker and sticker.image_path %}
+            <img src="/{{ sticker.image_path }}" alt="{{ sticker.prompt or '' }}"
+                 class="sticker-img">
+          {% else %}
+            <div class="cell-placeholder">
+              <span class="glyphicon glyphicon-plus-sign"></span>
+            </div>
+          {% endif %}
+          <div class="cell-overlay no-print"></div>
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Generate / Cell Action Modal -->
+<div class="modal fade" id="cellModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-sm" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+        <h4 class="modal-title" id="modalTitle">Generate Sticker</h4>
+      </div>
+      <div class="modal-body">
+        <!-- Generate panel -->
+        <div id="generate-panel">
+          <div class="form-group">
+            <label for="promptInput">What should this sticker be?</label>
+            <textarea id="promptInput" class="form-control" rows="3"
+                      placeholder="e.g. a happy dinosaur"></textarea>
+          </div>
+          <button id="btn-generate" class="btn btn-success btn-block">
+            <span id="generate-spinner" class="glyphicon glyphicon-refresh" style="display:none;"></span>
+            Generate
+          </button>
+        </div>
+        <!-- Cell actions panel (shown for filled cells) -->
+        <div id="action-panel" style="display:none;">
+          <button id="btn-regenerate" class="btn btn-warning btn-block" style="margin-bottom:6px;">
+            <span class="glyphicon glyphicon-refresh"></span> Regenerate
+          </button>
+          <button id="btn-copy-sticker" class="btn btn-info btn-block" style="margin-bottom:6px;">
+            <span class="glyphicon glyphicon-copy"></span> Copy
+          </button>
+          <button id="btn-copy-all" class="btn btn-default btn-block" style="margin-bottom:6px;">
+            <span class="glyphicon glyphicon-th"></span> Copy to All Cells
+          </button>
+          <button id="btn-delete-sticker" class="btn btn-danger btn-block">
+            <span class="glyphicon glyphicon-trash"></span> Delete
+          </button>
+        </div>
+        <!-- Paste panel -->
+        <div id="paste-panel" style="display:none;">
+          <button id="btn-paste-sticker" class="btn btn-success btn-block" style="margin-bottom:6px;">
+            <span class="glyphicon glyphicon-paste"></span> Paste Copied Sticker
+          </button>
+          <hr>
+          <p class="text-muted text-center small">or generate a new one:</p>
+          <div class="form-group">
+            <textarea id="promptInputPaste" class="form-control" rows="3"
+                      placeholder="e.g. a happy dinosaur"></textarea>
+          </div>
+          <button id="btn-generate-paste" class="btn btn-default btn-block">
+            Generate New
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://js.puter.com/v2/"></script>
+<script>
+  window.SHEET_ID = {{ sheet.id }};
+  window.CSRF_TOKEN = "{{ csrf_token() }}";
+  window.PROVIDER = {{ provider | tojson }};
+  window.BOUNDING_PROMPT = {{ bounding_prompt | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/sheet.js') }}"></script>
+{% endblock %}

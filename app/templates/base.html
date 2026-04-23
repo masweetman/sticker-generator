@@ -1,0 +1,72 @@
+{% extends "bootstrap/base.html" %}
+
+{%block title%}Sticker Generator{%endblock%}
+
+{% block navbar %}
+<nav class="navbar navbar-default navbar-fixed-top">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse"
+              data-target="#main-nav" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="{{ url_for('sheets_list') if current_user.is_authenticated else url_for('login') }}">
+        🎨 Sticker Generator
+      </a>
+    </div>
+
+    <div class="collapse navbar-collapse" id="main-nav">
+      {% if current_user.is_authenticated %}
+      <ul class="nav navbar-nav">
+        <li {% if request.endpoint == 'sheets_list' %}class="active"{% endif %}>
+          <a href="{{ url_for('sheets_list') }}">My Sheets</a>
+        </li>
+        <li>
+          <a href="{{ url_for('sheets_new') }}">
+            <span class="glyphicon glyphicon-plus"></span> New Sheet
+          </a>
+        </li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        {% if current_user.is_admin %}
+        <li><a href="{{ url_for('admin.index') }}">Admin</a></li>
+        {% endif %}
+        <li class="dropdown">
+          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button">
+            {{ current_user.user }} <span class="caret"></span>
+          </a>
+          <ul class="dropdown-menu">
+            <li><a href="{{ url_for('logout') }}">Sign Out</a></li>
+          </ul>
+        </li>
+      </ul>
+      {% else %}
+      <ul class="nav navbar-nav navbar-right">
+        <li><a href="{{ url_for('login') }}">Sign In</a></li>
+        <li><a href="{{ url_for('register') }}">Register</a></li>
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+<div class="navbar-spacer no-print" style="height:50px;"></div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible" role="alert">
+      <button type="button" class="close" data-dismiss="alert">&times;</button>
+      {{ message }}
+    </div>
+    {% endfor %}
+  {% endif %}
+  {% endwith %}
+  {% block main_content %}{% endblock %}
+</div>
+{% endblock %}

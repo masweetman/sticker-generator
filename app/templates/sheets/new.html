@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}New Sheet{% endblock %}
+
+{% block main_content %}
+<div class="row">
+  <div class="col-md-6 col-md-offset-3">
+    <div class="panel panel-default">
+      <div class="panel-heading"><h3 class="panel-title">Create New Sheet</h3></div>
+      <div class="panel-body">
+        <form action="." method="post" class="form">
+          {{ form.hidden_tag() }}
+          {{ wtf.form_errors(form, "only") }}
+          {{ wtf.form_field(form.name) }}
+          <div class="row">
+            <div class="col-sm-6">{{ wtf.form_field(form.rows) }}</div>
+            <div class="col-sm-6">{{ wtf.form_field(form.cols) }}</div>
+          </div>
+          <p class="text-muted small">Grid: rows &times; columns (1–10 each). A typical Avery sticker sheet is 4&times;6.</p>
+          <button type="submit" class="btn btn-success btn-block">Create Sheet</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

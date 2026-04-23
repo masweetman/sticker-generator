@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}My Sheets{% endblock %}
+
+{% block main_content %}
+<div class="row">
+  <div class="col-md-10 col-md-offset-1">
+    <div class="page-header">
+      <h2>My Sticker Sheets
+        <a href="{{ url_for('sheets_new') }}" class="btn btn-success pull-right">
+          <span class="glyphicon glyphicon-plus"></span> New Sheet
+        </a>
+      </h2>
+    </div>
+
+    {% if sheets %}
+    <div class="row">
+      {% for sheet in sheets %}
+      <div class="col-sm-6 col-md-4">
+        <div class="panel panel-default">
+          <div class="panel-body">
+            <h4>{{ sheet.name }}</h4>
+            <p class="text-muted">{{ sheet.rows }}&times;{{ sheet.cols }} grid &mdash;
+              {{ sheet.created_at.strftime('%b %d, %Y') }}</p>
+            <a href="{{ url_for('sheets_editor', sheet_id=sheet.id) }}"
+               class="btn btn-primary btn-sm">Open</a>
+            <form action="{{ url_for('sheets_delete', sheet_id=sheet.id) }}" method="post"
+                  style="display:inline;"
+                  onsubmit="return confirm('Delete sheet \'{{ sheet.name }}\'?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="well text-center">
+      <p>No sheets yet. Create your first sticker sheet!</p>
+      <a href="{{ url_for('sheets_new') }}" class="btn btn-success">
+        <span class="glyphicon glyphicon-plus"></span> New Sheet
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
