@@ -5,8 +5,7 @@ from app import db
 DEFAULT_BOUNDING_PROMPT = (
     "A high-quality vector-style sticker for a toddler, featuring [INSERT SUBJECT HERE]. "
     "The design should be extremely simple and fun with thick, bold black outlines and a minimalist "
-    "flat color palette. No shading, no gradients, and no complex details. The character should have "
-    "a friendly, 'kawaii' expression with big eyes. Include a thick white border around the entire "
+    "flat color palette. No shading, no gradients, and no complex details. Include a thick white border around the entire "
     "design, isolated on a plain white background."
 )
 
