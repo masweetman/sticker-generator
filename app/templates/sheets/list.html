@@ -16,19 +16,19 @@
     {% if sheets %}
     <div class="row">
       {% for sheet in sheets %}
-      <div class="col-sm-6 col-md-4">
+      <div class="col-xs-12 col-sm-6 col-md-4">
         <div class="panel panel-default">
           <div class="panel-body">
             <h4>{{ sheet.name }}</h4>
             <p class="text-muted">{{ sheet.rows }}&times;{{ sheet.cols }} grid &mdash;
               {{ sheet.created_at.strftime('%b %d, %Y') }}</p>
             <a href="{{ url_for('sheets_editor', sheet_id=sheet.id) }}"
-               class="btn btn-primary btn-sm">Open</a>
+               class="btn btn-primary btn-block">Open</a>
             <form action="{{ url_for('sheets_delete', sheet_id=sheet.id) }}" method="post"
-                  style="display:inline;"
+                  style="margin-top:6px;"
                   onsubmit="return confirm('Delete sheet \'{{ sheet.name }}\'?')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              <button type="submit" class="btn btn-danger btn-block">Delete</button>
             </form>
           </div>
         </div>

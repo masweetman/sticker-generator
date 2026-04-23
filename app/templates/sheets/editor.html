@@ -60,6 +60,21 @@
   </div>
 </div>
 
+<!-- Mobile section navigator (shown only on small screens) -->
+<div class="mobile-section-view no-print">
+  <div class="mobile-nav-bar">
+    <button class="btn btn-default" id="btn-mobile-prev">
+      <span class="glyphicon glyphicon-chevron-left"></span> Back
+    </button>
+    <span id="mobile-section-label">Row 1 of {{ sheet.rows }}</span>
+    <button class="btn btn-default" id="btn-mobile-next">
+      Next <span class="glyphicon glyphicon-chevron-right"></span>
+    </button>
+  </div>
+  <div class="mobile-cells-grid" id="mobile-cells-grid"
+       style="--cols:{{ sheet.cols }};"></div>
+</div>
+
 <!-- Sheet canvas -->
 <div class="sheet-viewport">
   <div class="sticker-sheet"
@@ -175,6 +190,8 @@
 <script src="https://js.puter.com/v2/"></script>
 <script>
   window.SHEET_ID = {{ sheet.id }};
+  window.SHEET_ROWS = {{ sheet.rows }};
+  window.SHEET_COLS = {{ sheet.cols }};
   window.CSRF_TOKEN = "{{ csrf_token() }}";
   window.PROVIDER = {{ provider | tojson }};
   window.BOUNDING_PROMPT = {{ bounding_prompt | tojson }};

@@ -105,6 +105,11 @@
   // Currently active cell
   var activeCell = null;
 
+  // Mobile section navigator state
+  var sheetRows = window.SHEET_ROWS || 4;
+  var sheetCols = window.SHEET_COLS || 6;
+  var mobileCurrentRow = 0;
+
   // ── DOM refs ──────────────────────────────────────────────────────────────
   var modal = document.getElementById('cellModal');
   var $modal = $(modal);
@@ -238,43 +243,51 @@
   }
 
   // ── Cell click ────────────────────────────────────────────────────────────
+  function handleCellClick(cell) {
+    var row = parseInt(cell.dataset.row, 10);
+    var col = parseInt(cell.dataset.col, 10);
+    var hasSticker = cell.dataset.hasSticker === '1';
+
+    activeCell = cell;
+
+    if (copyMode && clipboard) {
+      // In copy-mode with something on clipboard: show paste panel
+      showModal('Paste or Generate — (' + row + ',' + col + ')');
+      showPanel('paste');
+      return;
+    }
+
+    if (copyMode && hasSticker) {
+      // In copy-mode, picking a source — always highlight the print cell
+      clearCopySource();
+      clipboard = { row: row, col: col };
+      var srcPrintCell = document.querySelector(
+        '.sticker-sheet .sticker-cell[data-row="' + row + '"][data-col="' + col + '"]'
+      );
+      if (srcPrintCell) srcPrintCell.classList.add('copy-source');
+      renderMobileSection(mobileCurrentRow);
+      return;
+    }
+
+    if (hasSticker) {
+      showModal('Cell (' + row + ',' + col + ')');
+      showPanel('action');
+    } else {
+      showModal('Generate Sticker — (' + row + ',' + col + ')');
+      showPanel('generate');
+      promptInput.value = '';
+      // Auto-start listening for empty cells if browser supports it
+      if (SpeechRecognition) {
+        startListening(promptInput, listeningOverlay, promptArea);
+      } else {
+        promptInput.focus();
+      }
+    }
+  }
+
   document.querySelectorAll('.sticker-cell').forEach(function (cell) {
     cell.addEventListener('click', function () {
-      var row = parseInt(cell.dataset.row, 10);
-      var col = parseInt(cell.dataset.col, 10);
-      var hasSticker = cell.dataset.hasSticker === '1';
-
-      activeCell = cell;
-
-      if (copyMode && clipboard) {
-        // In copy-mode with something on clipboard: show paste panel
-        showModal('Paste or Generate — (' + row + ',' + col + ')');
-        showPanel('paste');
-        return;
-      }
-
-      if (copyMode && hasSticker) {
-        // In copy-mode, picking a source
-        clearCopySource();
-        clipboard = { row: row, col: col };
-        cell.classList.add('copy-source');
-        return;
-      }
-
-      if (hasSticker) {
-        showModal('Cell (' + row + ',' + col + ')');
-        showPanel('action');
-      } else {
-        showModal('Generate Sticker — (' + row + ',' + col + ')');
-        showPanel('generate');
-        promptInput.value = '';
-        // Auto-start listening for empty cells if browser supports it
-        if (SpeechRecognition) {
-          startListening(promptInput, listeningOverlay, promptArea);
-        } else {
-          promptInput.focus();
-        }
-      }
+      handleCellClick(cell);
     });
   });
 
@@ -288,6 +301,80 @@
     generatePanel.style.display = which === 'generate' ? '' : 'none';
     actionPanel.style.display = which === 'action' ? '' : 'none';
     pastePanel.style.display = which === 'paste' ? '' : 'none';
+  }
+
+  // ── Mobile section navigator ──────────────────────────────────────────────
+  var mobileCellsGrid = document.getElementById('mobile-cells-grid');
+  var btnMobilePrev = document.getElementById('btn-mobile-prev');
+  var btnMobileNext = document.getElementById('btn-mobile-next');
+
+  function renderMobileSection(row) {
+    if (!mobileCellsGrid) return;
+    var label = document.getElementById('mobile-section-label');
+
+    mobileCellsGrid.innerHTML = '';
+    for (var c = 0; c < sheetCols; c++) {
+      var printCell = document.querySelector(
+        '.sticker-sheet .sticker-cell[data-row="' + row + '"][data-col="' + c + '"]'
+      );
+      var mobileCell = document.createElement('div');
+      mobileCell.className = 'sticker-cell';
+      mobileCell.dataset.row = row;
+      mobileCell.dataset.col = c;
+
+      if (printCell && printCell.dataset.hasSticker === '1') {
+        mobileCell.dataset.hasSticker = '1';
+        var srcImg = printCell.querySelector('.sticker-img');
+        if (srcImg) {
+          var mobileImg = document.createElement('img');
+          mobileImg.src = srcImg.src;
+          mobileImg.className = 'sticker-img';
+          mobileImg.alt = srcImg.alt;
+          mobileCell.appendChild(mobileImg);
+        }
+      } else {
+        var ph = document.createElement('div');
+        ph.className = 'cell-placeholder';
+        ph.innerHTML = '<span class="glyphicon glyphicon-record"></span>';
+        mobileCell.appendChild(ph);
+      }
+
+      var overlay = document.createElement('div');
+      overlay.className = 'cell-overlay';
+      mobileCell.appendChild(overlay);
+
+      if (clipboard && clipboard.row === row && clipboard.col === c) {
+        mobileCell.classList.add('copy-source');
+      }
+
+      mobileCellsGrid.appendChild(mobileCell);
+    }
+
+    if (label) label.textContent = 'Row ' + (row + 1) + ' of ' + sheetRows;
+    if (btnMobilePrev) btnMobilePrev.disabled = (row === 0);
+    if (btnMobileNext) btnMobileNext.disabled = (row === sheetRows - 1);
+    mobileCurrentRow = row;
+  }
+
+  if (mobileCellsGrid) {
+    mobileCellsGrid.addEventListener('click', function (e) {
+      var cell = e.target.closest ? e.target.closest('.sticker-cell') : null;
+      if (!cell && e.target.classList && e.target.classList.contains('sticker-cell')) {
+        cell = e.target;
+      }
+      if (cell) handleCellClick(cell);
+    });
+  }
+
+  if (btnMobilePrev) {
+    btnMobilePrev.addEventListener('click', function () {
+      if (mobileCurrentRow > 0) renderMobileSection(mobileCurrentRow - 1);
+    });
+  }
+  if (btnMobileNext) {
+    btnMobileNext.addEventListener('click', function () {
+      if (mobileCurrentRow < sheetRows - 1) renderMobileSection(mobileCurrentRow + 1);
+    });
   }
 
   // ── Generate ──────────────────────────────────────────────────────────────
@@ -437,10 +524,25 @@
       if (data.success) {
         data.updated.forEach(function (item) {
           var cell = document.querySelector(
-            '.sticker-cell[data-row="' + item.row + '"][data-col="' + item.col + '"]'
+            '.sticker-sheet .sticker-cell[data-row="' + item.row + '"][data-col="' + item.col + '"]'
           );
-          if (cell) setCell(cell, item.image_url);
+          if (cell) {
+            var existing = cell.querySelector('.sticker-img');
+            if (existing) {
+              existing.src = item.image_url + '?t=' + Date.now();
+            } else {
+              var placeholder = cell.querySelector('.cell-placeholder');
+              if (placeholder) placeholder.remove();
+              var img = document.createElement('img');
+              img.src = item.image_url + '?t=' + Date.now();
+              img.className = 'sticker-img';
+              img.alt = '';
+              cell.insertBefore(img, cell.querySelector('.cell-overlay'));
+            }
+            cell.dataset.hasSticker = '1';
+          }
         });
+        renderMobileSection(mobileCurrentRow);
         $modal.modal('hide');
       } else {
         alert('Error: ' + (data.error || 'Unknown'));
@@ -475,15 +577,20 @@
 
   // ── Copy sticker (mark in clipboard) ─────────────────────────────────────
   btnCopySticker.addEventListener('click', function () {
-    clipboard = {
+    var newClipboard = {
       row: parseInt(activeCell.dataset.row, 10),
       col: parseInt(activeCell.dataset.col, 10)
     };
     clearCopySource();
-    activeCell.classList.add('copy-source');
+    clipboard = newClipboard;
+    var srcPrintCell = document.querySelector(
+      '.sticker-sheet .sticker-cell[data-row="' + newClipboard.row + '"][data-col="' + newClipboard.col + '"]'
+    );
+    if (srcPrintCell) srcPrintCell.classList.add('copy-source');
     copyMode = true;
     copyModeLabel.textContent = 'On';
     btnCopyMode.classList.add('active');
+    renderMobileSection(mobileCurrentRow);
     $modal.modal('hide');
   });
 
@@ -522,32 +629,52 @@
 
   // ── Cell DOM helpers ──────────────────────────────────────────────────────
   function setCell(cell, imageUrl) {
-    var existing = cell.querySelector('.sticker-img');
-    if (existing) {
-      existing.src = imageUrl + '?t=' + Date.now();
-    } else {
-      var placeholder = cell.querySelector('.cell-placeholder');
-      if (placeholder) placeholder.remove();
-      var img = document.createElement('img');
-      img.src = imageUrl + '?t=' + Date.now();
-      img.className = 'sticker-img';
-      img.alt = '';
-      cell.insertBefore(img, cell.querySelector('.cell-overlay'));
+    // Always write to the canonical print cell; then refresh mobile view
+    var row = parseInt(cell.dataset.row, 10);
+    var col = parseInt(cell.dataset.col, 10);
+    var printCell = document.querySelector(
+      '.sticker-sheet .sticker-cell[data-row="' + row + '"][data-col="' + col + '"]'
+    );
+    if (printCell) {
+      var existing = printCell.querySelector('.sticker-img');
+      if (existing) {
+        existing.src = imageUrl + '?t=' + Date.now();
+      } else {
+        var placeholder = printCell.querySelector('.cell-placeholder');
+        if (placeholder) placeholder.remove();
+        var img = document.createElement('img');
+        img.src = imageUrl + '?t=' + Date.now();
+        img.className = 'sticker-img';
+        img.alt = '';
+        printCell.insertBefore(img, printCell.querySelector('.cell-overlay'));
+      }
+      printCell.dataset.hasSticker = '1';
     }
-    cell.dataset.hasSticker = '1';
+    if (row === mobileCurrentRow) renderMobileSection(mobileCurrentRow);
   }
 
   function clearCell(cell) {
-    var img = cell.querySelector('.sticker-img');
-    if (img) img.remove();
-    if (!cell.querySelector('.cell-placeholder')) {
-      var ph = document.createElement('div');
-      ph.className = 'cell-placeholder';
-      ph.innerHTML = '<span class="glyphicon glyphicon-plus-sign"></span>';
-      cell.insertBefore(ph, cell.querySelector('.cell-overlay'));
+    var row = parseInt(cell.dataset.row, 10);
+    var col = parseInt(cell.dataset.col, 10);
+    var printCell = document.querySelector(
+      '.sticker-sheet .sticker-cell[data-row="' + row + '"][data-col="' + col + '"]'
+    );
+    if (printCell) {
+      var img = printCell.querySelector('.sticker-img');
+      if (img) img.remove();
+      if (!printCell.querySelector('.cell-placeholder')) {
+        var ph = document.createElement('div');
+        ph.className = 'cell-placeholder';
+        ph.innerHTML = '<span class="glyphicon glyphicon-plus-sign"></span>';
+        printCell.insertBefore(ph, printCell.querySelector('.cell-overlay'));
+      }
+      delete printCell.dataset.hasSticker;
+      printCell.classList.remove('copy-source');
     }
-    delete cell.dataset.hasSticker;
-    cell.classList.remove('copy-source');
+    if (row === mobileCurrentRow) renderMobileSection(mobileCurrentRow);
   }
+
+  // Initialize mobile section view
+  renderMobileSection(0);
 
 })();

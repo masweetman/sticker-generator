@@ -129,6 +129,123 @@
   50%       { opacity: 0.5; }
 }
 
+/* ── Mobile section navigator (hidden by default, shown on small screens) ──── */
+.mobile-section-view {
+  display: none;
+}
+
+/* ── iPad: scale full sheet to fit viewport ────────────────────────────────── */
+@media (min-width: 768px) and (max-width: 1000px) {
+  .sticker-sheet {
+    zoom: 0.82;
+  }
+}
+
+/* ── Mobile (iPhone / small screens) ─────────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Hide full print-sheet canvas, show mobile navigator instead */
+  .sheet-viewport {
+    display: none !important;
+  }
+
+  .mobile-section-view {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 110px);
+    background: #e8e8e8;
+  }
+
+  /* Nav bar with Back / label / Next */
+  .mobile-nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #f8f8f8;
+    border-bottom: 1px solid #ddd;
+    flex-shrink: 0;
+  }
+
+  .mobile-nav-bar .btn {
+    min-width: 80px;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  #mobile-section-label {
+    font-weight: bold;
+    font-size: 15px;
+  }
+
+  /* The cell grid — fills remaining height */
+  .mobile-cells-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(var(--cols), 1fr);
+    gap: 6px;
+    padding: 12px;
+    overflow: hidden;
+  }
+
+  .mobile-cells-grid .sticker-cell {
+    aspect-ratio: 1 / 1;
+    min-height: 60px;
+  }
+
+  /* Controls bar: collapse to vertical stack */
+  .controls-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .controls-left,
+  .controls-center,
+  .controls-right {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .controls-left .btn,
+  .controls-right .btn {
+    flex: 1;
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  /* Hide resize form on mobile (rare action — use desktop for that) */
+  .controls-center {
+    display: none !important;
+  }
+
+  .controls-right select,
+  .controls-right .form-control {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Full-width modal on mobile */
+  .modal-dialog {
+    margin: 8px;
+    width: calc(100% - 16px);
+  }
+
+  .modal-body .btn {
+    min-height: 50px;
+    font-size: 16px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+  }
+
+  #promptInput,
+  #promptInputPaste {
+    font-size: 16px;
+    min-height: 80px;
+  }
+}
+
 /* ── Print styles ──────────────────────────────────────────────────────────── */
 @media print {
   @page {

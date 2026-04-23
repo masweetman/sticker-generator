@@ -2,6 +2,40 @@
 
 {%block title%}Sticker Generator{%endblock%}
 
+{% block styles %}
+{{ super() }}
+<style>
+/* ── Global mobile / touch fixes ──────────────────────────────────────── */
+/* Prevent iOS from zooming when inputs are focused */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+/* Minimum 44px touch target on all buttons and inputs */
+.btn,
+input[type="submit"],
+input[type="button"] {
+  min-height: 44px;
+  line-height: 1.4;
+}
+
+/* Slightly larger text in forms on mobile */
+@media (max-width: 767px) {
+  .panel-body {
+    padding: 16px;
+  }
+  .btn-block + .btn-block {
+    margin-top: 8px;
+  }
+}
+</style>
+{% endblock %}
+
 {% block navbar %}
 <nav class="navbar navbar-default navbar-fixed-top">
   <div class="container-fluid">
