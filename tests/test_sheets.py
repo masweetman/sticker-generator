@@ -6,6 +6,8 @@ Integration tests for sheet management routes:
   POST /sheets/<id>/delete/
   POST /sheets/<id>/resize/
 """
+from pathlib import Path
+
 import pytest
 from app import app as flask_app, db as _db
 from app.models import StickerSheet, Sticker
@@ -186,3 +188,28 @@ class TestSheetsResize:
                           follow_redirects=True)
         assert r.status_code == 200
         assert b'Invalid' in r.data or b'invalid' in r.data.lower()
+
+
+class TestSheetsPrintRegression:
+    def test_print_css_does_not_use_viewport_height(self):
+        css_path = Path(flask_app.root_path) / 'static' / 'css' / 'sheet.css'
+        css = css_path.read_text(encoding='utf-8')
+
+        assert '@media print' in css
+        assert 'height: 100vh;' not in css
+
+    def test_print_css_forces_sheet_viewport_visible(self):
+        css_path = Path(flask_app.root_path) / 'static' / 'css' / 'sheet.css'
+        css = css_path.read_text(encoding='utf-8')
+
+        # Mobile rules hide the viewport with !important; print must override that.
+        assert '.sheet-viewport {' in css
+        assert 'display: block !important;' in css
+
+    def test_editor_uses_guarded_print_action(self, client_a, sheet_a):
+        r = client_a.get(f'/sheets/{sheet_a}/')
+        assert r.status_code == 200
+
+        # Avoid direct print calls so JS can ensure print readiness first.
+        assert b'onclick="window.print()"' not in r.data
+        assert b'id="btn-print-sheet"' in r.data

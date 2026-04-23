@@ -135,6 +135,7 @@
   var btnMic = null;      // no longer in HTML
   var btnMicPaste = null; // no longer in HTML
 
+  var btnPrintSheet = document.getElementById('btn-print-sheet');
   var btnCopyMode = document.getElementById('btn-copy-mode');
   var copyModeLabel = document.getElementById('copy-mode-label');
 
@@ -228,6 +229,25 @@
   });
 
   // ── Copy mode toggle ──────────────────────────────────────────────────────
+  function hasPendingStickerImages() {
+    return Array.prototype.some.call(
+      document.querySelectorAll('.sticker-sheet .sticker-img'),
+      function (img) {
+        return !img.complete || img.naturalWidth === 0;
+      }
+    );
+  }
+
+  if (btnPrintSheet) {
+    btnPrintSheet.addEventListener('click', function () {
+      if (hasPendingStickerImages()) {
+        alert('Please wait for sticker images to finish loading before printing.');
+        return;
+      }
+      window.print();
+    });
+  }
+
   btnCopyMode.addEventListener('click', function () {
     copyMode = !copyMode;
     copyModeLabel.textContent = copyMode ? 'On' : 'Off';
