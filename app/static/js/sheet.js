@@ -108,7 +108,6 @@
   // Mobile section navigator state
   var sheetRows = window.SHEET_ROWS || 4;
   var sheetCols = window.SHEET_COLS || 6;
-  var mobileCurrentRow = 0;
 
   // ── DOM refs ──────────────────────────────────────────────────────────────
   var modal = document.getElementById('cellModal');
@@ -285,7 +284,7 @@
         '.sticker-sheet .sticker-cell[data-row="' + row + '"][data-col="' + col + '"]'
       );
       if (srcPrintCell) srcPrintCell.classList.add('copy-source');
-      renderMobileSection(mobileCurrentRow);
+      renderMobileSection();
       return;
     }
 
@@ -325,55 +324,49 @@
 
   // ── Mobile section navigator ──────────────────────────────────────────────
   var mobileCellsGrid = document.getElementById('mobile-cells-grid');
-  var btnMobilePrev = document.getElementById('btn-mobile-prev');
-  var btnMobileNext = document.getElementById('btn-mobile-next');
 
-  function renderMobileSection(row) {
+  function renderMobileSection() {
     if (!mobileCellsGrid) return;
-    var label = document.getElementById('mobile-section-label');
 
     mobileCellsGrid.innerHTML = '';
-    for (var c = 0; c < sheetCols; c++) {
-      var printCell = document.querySelector(
-        '.sticker-sheet .sticker-cell[data-row="' + row + '"][data-col="' + c + '"]'
-      );
-      var mobileCell = document.createElement('div');
-      mobileCell.className = 'sticker-cell';
-      mobileCell.dataset.row = row;
-      mobileCell.dataset.col = c;
+    for (var r = 0; r < sheetRows; r++) {
+      for (var c = 0; c < sheetCols; c++) {
+        var printCell = document.querySelector(
+          '.sticker-sheet .sticker-cell[data-row="' + r + '"][data-col="' + c + '"]'
+        );
+        var mobileCell = document.createElement('div');
+        mobileCell.className = 'sticker-cell';
+        mobileCell.dataset.row = r;
+        mobileCell.dataset.col = c;
 
-      if (printCell && printCell.dataset.hasSticker === '1') {
-        mobileCell.dataset.hasSticker = '1';
-        var srcImg = printCell.querySelector('.sticker-img');
-        if (srcImg) {
-          var mobileImg = document.createElement('img');
-          mobileImg.src = srcImg.src;
-          mobileImg.className = 'sticker-img';
-          mobileImg.alt = srcImg.alt;
-          mobileCell.appendChild(mobileImg);
+        if (printCell && printCell.dataset.hasSticker === '1') {
+          mobileCell.dataset.hasSticker = '1';
+          var srcImg = printCell.querySelector('.sticker-img');
+          if (srcImg) {
+            var mobileImg = document.createElement('img');
+            mobileImg.src = srcImg.src;
+            mobileImg.className = 'sticker-img';
+            mobileImg.alt = srcImg.alt;
+            mobileCell.appendChild(mobileImg);
+          }
+        } else {
+          var ph = document.createElement('div');
+          ph.className = 'cell-placeholder';
+          ph.innerHTML = '<span class="glyphicon glyphicon-record"></span>';
+          mobileCell.appendChild(ph);
         }
-      } else {
-        var ph = document.createElement('div');
-        ph.className = 'cell-placeholder';
-        ph.innerHTML = '<span class="glyphicon glyphicon-record"></span>';
-        mobileCell.appendChild(ph);
+
+        var overlay = document.createElement('div');
+        overlay.className = 'cell-overlay';
+        mobileCell.appendChild(overlay);
+
+        if (clipboard && clipboard.row === r && clipboard.col === c) {
+          mobileCell.classList.add('copy-source');
+        }
+
+        mobileCellsGrid.appendChild(mobileCell);
       }
-
-      var overlay = document.createElement('div');
-      overlay.className = 'cell-overlay';
-      mobileCell.appendChild(overlay);
-
-      if (clipboard && clipboard.row === row && clipboard.col === c) {
-        mobileCell.classList.add('copy-source');
-      }
-
-      mobileCellsGrid.appendChild(mobileCell);
     }
-
-    if (label) label.textContent = 'Row ' + (row + 1) + ' of ' + sheetRows;
-    if (btnMobilePrev) btnMobilePrev.disabled = (row === 0);
-    if (btnMobileNext) btnMobileNext.disabled = (row === sheetRows - 1);
-    mobileCurrentRow = row;
   }
 
   if (mobileCellsGrid) {
@@ -383,17 +376,6 @@
         cell = e.target;
       }
       if (cell) handleCellClick(cell);
-    });
-  }
-
-  if (btnMobilePrev) {
-    btnMobilePrev.addEventListener('click', function () {
-      if (mobileCurrentRow > 0) renderMobileSection(mobileCurrentRow - 1);
-    });
-  }
-  if (btnMobileNext) {
-    btnMobileNext.addEventListener('click', function () {
-      if (mobileCurrentRow < sheetRows - 1) renderMobileSection(mobileCurrentRow + 1);
     });
   }
 
@@ -562,7 +544,7 @@
             cell.dataset.hasSticker = '1';
           }
         });
-        renderMobileSection(mobileCurrentRow);
+        renderMobileSection();
         $modal.modal('hide');
       } else {
         alert('Error: ' + (data.error || 'Unknown'));
@@ -610,7 +592,7 @@
     copyMode = true;
     copyModeLabel.textContent = 'On';
     btnCopyMode.classList.add('active');
-    renderMobileSection(mobileCurrentRow);
+    renderMobileSection();
     $modal.modal('hide');
   });
 
@@ -670,7 +652,7 @@
       }
       printCell.dataset.hasSticker = '1';
     }
-    if (row === mobileCurrentRow) renderMobileSection(mobileCurrentRow);
+    renderMobileSection();
   }
 
   function clearCell(cell) {
@@ -691,10 +673,10 @@
       delete printCell.dataset.hasSticker;
       printCell.classList.remove('copy-source');
     }
-    if (row === mobileCurrentRow) renderMobileSection(mobileCurrentRow);
+    renderMobileSection();
   }
 
   // Initialize mobile section view
-  renderMobileSection(0);
+  renderMobileSection();
 
 })();

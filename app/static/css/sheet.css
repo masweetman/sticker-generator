@@ -151,40 +151,16 @@
   .mobile-section-view {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 110px);
     background: #e8e8e8;
   }
 
-  /* Nav bar with Back / label / Next */
-  .mobile-nav-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    background: #f8f8f8;
-    border-bottom: 1px solid #ddd;
-    flex-shrink: 0;
-  }
-
-  .mobile-nav-bar .btn {
-    min-width: 80px;
-    min-height: 44px;
-    font-size: 16px;
-  }
-
-  #mobile-section-label {
-    font-weight: bold;
-    font-size: 15px;
-  }
-
-  /* The cell grid — fills remaining height */
+  /* The cell grid */
   .mobile-cells-grid {
-    flex: 1;
     display: grid;
     grid-template-columns: repeat(var(--cols), 1fr);
     gap: 6px;
     padding: 12px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .mobile-cells-grid .sticker-cell {
