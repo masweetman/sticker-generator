@@ -63,6 +63,9 @@ input[type="button"] {
             <span class="glyphicon glyphicon-plus"></span> New Sheet
           </a>
         </li>
+        <li {% if request.endpoint == 'library_list' %}class="active"{% endif %}>
+          <a href="{{ url_for('library_list') }}">Library</a>
+        </li>
       </ul>
       <ul class="nav navbar-nav navbar-right">
         {% if current_user.is_admin %}

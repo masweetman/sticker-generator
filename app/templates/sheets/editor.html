@@ -76,9 +76,9 @@
         <div class="sticker-cell"
              data-row="{{ r }}" data-col="{{ c }}"
              data-sheet="{{ sheet.id }}"
-             {% if sticker and sticker.image_path %}data-has-sticker="1"{% endif %}>
-          {% if sticker and sticker.image_path %}
-            <img src="/{{ sticker.image_path }}" alt="{{ sticker.prompt or '' }}"
+             {% if sticker and sticker.image %}data-has-sticker="1"{% endif %}>
+          {% if sticker and sticker.image %}
+            <img src="/{{ sticker.image.image_path }}" alt="{{ sticker.image.prompt or '' }}"
                  class="sticker-img">
           {% else %}
             <div class="cell-placeholder">
@@ -138,6 +138,9 @@
           </button>
           <button id="btn-copy-to-new-sheet" class="btn btn-primary btn-block" style="margin-bottom:6px;">
             <span class="glyphicon glyphicon-new-window"></span> Copy to New Sheet
+          </button>
+          <button id="btn-share-library" class="btn btn-success btn-block" style="margin-bottom:6px;">
+            <span class="glyphicon glyphicon-upload"></span> Share to Library
           </button>
           <button id="btn-delete-sticker" class="btn btn-danger btn-block">
             <span class="glyphicon glyphicon-trash"></span> Delete

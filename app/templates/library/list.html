@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}Sticker Library{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+.tag-filter-bar {
+  margin-bottom: 16px;
+}
+.tag-filter-bar .badge-tag {
+  display: inline-block;
+  margin: 3px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #e0e0e0;
+  color: #333;
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: none;
+}
+.tag-filter-bar .badge-tag.active {
+  background: #337ab7;
+  color: #fff;
+}
+.library-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+}
+.library-card {
+  width: 180px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+.library-card img {
+  width: 100%;
+  height: 160px;
+  object-fit: contain;
+  background: #f9f9f9;
+  display: block;
+}
+.library-card .card-body {
+  padding: 8px;
+}
+.library-card .card-tags {
+  margin: 4px 0 6px;
+  min-height: 20px;
+}
+.library-card .card-tags .label {
+  margin: 1px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.library-card .card-meta {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 6px;
+}
+.library-card .card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.add-sheet-modal-image-url {
+  display: none;
+}
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="container-fluid" style="padding-top: 20px;">
+  <h2>Sticker Library</h2>
+
+  <!-- Tag filter bar -->
+  <div class="tag-filter-bar">
+    <strong>Filter by tag:</strong>
+    {% if selected_tags %}
+      <a href="{{ url_for('library_list') }}" class="badge-tag">
+        <span class="glyphicon glyphicon-remove"></span> Clear filters
+      </a>
+    {% endif %}
+    {% for tag in all_tags %}
+      {% set is_active = tag in selected_tags %}
+      {% if is_active %}
+        {# Remove this tag from the selection #}
+        {% set new_tags = selected_tags | reject('equalto', tag) | list %}
+        <a href="{{ url_for('library_list', tags=new_tags | join(',')) if new_tags else url_for('library_list') }}"
+           class="badge-tag active">{{ tag }}</a>
+      {% else %}
+        {# Add this tag to the selection #}
+        {% set new_tags = selected_tags + [tag] %}
+        <a href="{{ url_for('library_list', tags=new_tags | join(',')) }}"
+           class="badge-tag">{{ tag }}</a>
+      {% endif %}
+    {% endfor %}
+    {% if not all_tags %}
+      <span class="text-muted">No tags yet.</span>
+    {% endif %}
+  </div>
+
+  {% if not images %}
+    <div class="alert alert-info">
+      No stickers in the library yet.
+      {% if selected_tags %}Try clearing your tag filters.{% endif %}
+    </div>
+  {% else %}
+  <div class="library-grid">
+    {% for image in images %}
+    <div class="library-card" id="library-card-{{ image.id }}">
+      <img src="/{{ image.image_path }}" alt="{{ image.prompt or '' }}" loading="lazy">
+      <div class="card-body">
+        <div class="card-tags" id="tags-{{ image.id }}">
+          {% for tag in image.tags %}
+            {% set new_tags = selected_tags + [tag.tag] if tag.tag not in selected_tags else selected_tags %}
+            <a href="{{ url_for('library_list', tags=new_tags | join(',')) }}"
+               class="label label-info">{{ tag.tag }}</a>
+          {% endfor %}
+        </div>
+        <div class="card-meta">
+          {% if image.created_by %}by {{ image.created_by.user }}{% endif %}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary btn-xs btn-add-sheet"
+                  data-image-id="{{ image.id }}"
+                  data-image-url="/{{ image.image_path }}">
+            <span class="glyphicon glyphicon-plus"></span> Add to Sheet
+          </button>
+          {% if current_user.is_admin or image.created_by_user_id == current_user.id %}
+          <button class="btn btn-default btn-xs btn-edit-tags"
+                  data-image-id="{{ image.id }}">
+            <span class="glyphicon glyphicon-tag"></span> Tags
+          </button>
+          <button class="btn btn-danger btn-xs btn-delete-library"
+                  data-image-id="{{ image.id }}">
+            <span class="glyphicon glyphicon-trash"></span>
+          </button>
+          {% endif %}
+        </div>
+
+        <!-- Inline tag editor (owner/admin only, hidden by default) -->
+        {% if current_user.is_admin or image.created_by_user_id == current_user.id %}
+        <div class="tag-editor" id="tag-editor-{{ image.id }}" style="display:none; margin-top:8px;">
+          <div class="input-group input-group-sm" style="margin-bottom:4px;">
+            <input type="text" class="form-control tag-input"
+                   data-image-id="{{ image.id }}"
+                   placeholder="add tag…" maxlength="50">
+            <span class="input-group-btn">
+              <button class="btn btn-default btn-add-tag" data-image-id="{{ image.id }}">
+                <span class="glyphicon glyphicon-plus"></span>
+              </button>
+            </span>
+          </div>
+          <div class="editable-tags" id="editable-tags-{{ image.id }}">
+            {% for tag in image.tags %}
+            <span class="label label-default" style="margin:1px; display:inline-block;">
+              {{ tag.tag }}
+              <a href="#" class="btn-remove-tag" data-image-id="{{ image.id }}"
+                 data-tag="{{ tag.tag }}" style="color:#fff; margin-left:3px;">
+                &times;
+              </a>
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add to Sheet Modal -->
+<div class="modal fade" id="addToSheetModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-sm" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+        <h4 class="modal-title">Add to Sheet</h4>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modal-image-id" value="">
+        <div class="form-group">
+          <label>
+            <input type="radio" name="sheet-choice" value="existing" checked> Add to existing sheet
+          </label>
+        </div>
+        <div id="existing-sheet-area">
+          <select id="sheet-select" class="form-control" style="margin-bottom:10px;">
+            <option value="">Loading sheets…</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="radio" name="sheet-choice" value="new"> Add to a new sheet
+          </label>
+        </div>
+        <div id="new-sheet-area" style="display:none;">
+          <input type="text" id="new-sheet-name" class="form-control"
+                 placeholder="New sheet name" maxlength="200" style="margin-bottom:10px;">
+        </div>
+        <button id="btn-confirm-add-sheet" class="btn btn-primary btn-block">
+          <span id="add-sheet-spinner" class="glyphicon glyphicon-refresh" style="display:none;"></span>
+          Add Sticker
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  window.CSRF_TOKEN = "{{ csrf_token() }}";
+</script>
+<script src="{{ url_for('static', filename='js/library.js') }}"></script>
+{% endblock %}

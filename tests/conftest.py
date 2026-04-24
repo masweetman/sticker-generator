@@ -21,7 +21,7 @@ from werkzeug.security import generate_password_hash
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app import app as flask_app, db as _db
-from app.models import User, Settings, StickerSheet, Sticker
+from app.models import User, Settings, StickerSheet, Sticker, Image
 
 # ── Minimal PNG (1×1 red pixel) used as fake sticker image in tests ─────────
 MINIMAL_PNG = base64.b64decode(
@@ -172,11 +172,13 @@ def _create_sheet(user_id, name='Test Sheet', rows=4, cols=6):
 
 def _create_sticker(sheet_id, row=0, col=0, prompt='a test sticker',
                     image_path=None):
-    """Create a Sticker record (optionally with a fake image_path)."""
+    """Create an Image + Sticker record pair and return the sticker id."""
     with flask_app.app_context():
         rel = image_path or f'static/sticker_images/{sheet_id}/{row}_{col}_test.png'
-        s = Sticker(sheet_id=sheet_id, row=row, col=col,
-                    prompt=prompt, image_path=rel)
+        img = Image(prompt=prompt, image_path=rel)
+        _db.session.add(img)
+        _db.session.flush()
+        s = Sticker(sheet_id=sheet_id, row=row, col=col, image_id=img.id)
         _db.session.add(s)
         _db.session.commit()
         return s.id
@@ -197,7 +199,7 @@ def sheet_b(user_b, clean_db):
 @pytest.fixture
 def sticker_a(sheet_a, tmp_path, monkeypatch):
     """
-    A Sticker in sheet_a with a real PNG file on disk.
+    An Image + Sticker in sheet_a with a real PNG file on disk.
     Monkeypatches flask_app.root_path so the path resolves to tmp_path.
     """
     monkeypatch.setattr(flask_app, 'root_path', str(tmp_path))

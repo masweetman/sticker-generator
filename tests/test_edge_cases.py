@@ -104,7 +104,7 @@ class TestUpsertBehavior:
             s = Sticker.query.filter_by(
                 sheet_id=sheet_a, row=0, col=0).first()
             assert count == 1, 'Duplicate sticker rows must not be created'
-            assert s.prompt == 'second', 'Prompt should be updated on regenerate'
+            assert s.image.prompt == 'second', 'Prompt should be updated on regenerate'
 
     def test_upload_twice_same_cell_upserts(self, client_a, sheet_a, image_dir):
         payload_1 = json.dumps({

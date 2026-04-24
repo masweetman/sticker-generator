@@ -10,7 +10,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from app import app, lm, db, limiter, audit_log
 from app.forms import (LoginForm, RegisterForm, StickerSheetForm, ProfileForm,
                        TwoFactorVerifyForm, TwoFactorSetupForm, TwoFactorDisableForm)
-from app.models import User, Settings, StickerSheet, Sticker
+from app.models import User, Settings, StickerSheet, Sticker, Image, Tag
 
 
 # ── Auth helpers ────────────────────────────────────────────────────────────
@@ -173,11 +173,16 @@ def sheets_editor(sheet_id):
 @login_required
 def sheets_delete(sheet_id):
     sheet = _get_own_sheet(sheet_id)
-    _delete_sheet_images(sheet)
+    sheet_name = sheet.name
+    # Collect images before cascade so we can orphan-check after
+    images_to_check = [s.image for s in sheet.stickers]
     db.session.delete(sheet)
+    db.session.flush()
+    for image in images_to_check:
+        _cleanup_image_if_orphan(image)
     db.session.commit()
     audit_log('sheet_delete', user_id=current_user.id, extra={'sheet_id': sheet_id})
-    flash(f'"{sheet.name}" deleted.', 'success')
+    flash(f'"{sheet_name}" deleted.', 'success')
     return redirect(url_for('sheets_list'))
 
 
@@ -194,8 +199,10 @@ def sheets_resize(sheet_id):
     # Remove out-of-bounds stickers
     for sticker in list(sheet.stickers):
         if sticker.row >= new_rows or sticker.col >= new_cols:
-            _delete_sticker_image(sticker)
+            image = sticker.image
             db.session.delete(sticker)
+            db.session.flush()
+            _cleanup_image_if_orphan(image)
     sheet.rows = new_rows
     sheet.cols = new_cols
     db.session.commit()
@@ -297,13 +304,22 @@ def api_generate():
     with open(abs_path, 'wb') as f:
         f.write(img_data)
 
-    # Upsert Sticker record
-    sticker = Sticker.query.filter_by(sheet_id=sheet_id, row=row, col=col).first()
-    if sticker is None:
-        sticker = Sticker(sheet_id=sheet_id, row=row, col=col)
-        db.session.add(sticker)
-    sticker.prompt = user_prompt
-    sticker.image_path = rel_path
+    # Create new Image record; upsert Sticker pointing to it
+    old_sticker = Sticker.query.filter_by(sheet_id=sheet_id, row=row, col=col).first()
+    old_image = old_sticker.image if old_sticker else None
+
+    new_image = Image(prompt=user_prompt, image_path=rel_path,
+                      created_by_user_id=current_user.id)
+    db.session.add(new_image)
+    db.session.flush()
+
+    if old_sticker is None:
+        db.session.add(Sticker(sheet_id=sheet_id, row=row, col=col, image_id=new_image.id))
+    else:
+        old_sticker.image_id = new_image.id
+
+    db.session.flush()
+    _cleanup_image_if_orphan(old_image)
     db.session.commit()
 
     audit_log('sticker_generate', user_id=current_user.id,
@@ -351,12 +367,21 @@ def api_upload_sticker():
     with open(abs_path, 'wb') as f:
         f.write(img_bytes)
 
-    sticker = Sticker.query.filter_by(sheet_id=sheet_id, row=row, col=col).first()
-    if sticker is None:
-        sticker = Sticker(sheet_id=sheet_id, row=row, col=col)
-        db.session.add(sticker)
-    sticker.prompt = prompt
-    sticker.image_path = rel_path
+    old_sticker = Sticker.query.filter_by(sheet_id=sheet_id, row=row, col=col).first()
+    old_image = old_sticker.image if old_sticker else None
+
+    new_image = Image(prompt=prompt, image_path=rel_path,
+                      created_by_user_id=current_user.id)
+    db.session.add(new_image)
+    db.session.flush()
+
+    if old_sticker is None:
+        db.session.add(Sticker(sheet_id=sheet_id, row=row, col=col, image_id=new_image.id))
+    else:
+        old_sticker.image_id = new_image.id
+
+    db.session.flush()
+    _cleanup_image_if_orphan(old_image)
     db.session.commit()
 
     return jsonify(success=True, image_url='/' + rel_path)
@@ -376,27 +401,26 @@ def api_copy_all():
 
     src_sticker = Sticker.query.filter_by(
         sheet_id=sheet_id, row=src_row, col=src_col).first()
-    if src_sticker is None or not src_sticker.image_path:
+    if src_sticker is None:
         return jsonify(success=False, error='Source sticker has no image.'), 404
 
-    import shutil
-    src_abs = os.path.join(current_app.root_path, src_sticker.image_path)
+    image_url = '/' + src_sticker.image.image_path
     updated = []
     for r in range(sheet.rows):
         for c in range(sheet.cols):
             if r == src_row and c == src_col:
                 continue
-            dst_rel, dst_abs = _sticker_path(sheet_id, r, c)
-            os.makedirs(os.path.dirname(dst_abs), exist_ok=True)
-            shutil.copy2(src_abs, dst_abs)
-            dst_sticker = Sticker.query.filter_by(
-                sheet_id=sheet_id, row=r, col=c).first()
+            dst_sticker = Sticker.query.filter_by(sheet_id=sheet_id, row=r, col=c).first()
+            old_image = dst_sticker.image if dst_sticker else None
             if dst_sticker is None:
-                dst_sticker = Sticker(sheet_id=sheet_id, row=r, col=c)
+                dst_sticker = Sticker(sheet_id=sheet_id, row=r, col=c,
+                                      image_id=src_sticker.image_id)
                 db.session.add(dst_sticker)
-            dst_sticker.prompt = src_sticker.prompt
-            dst_sticker.image_path = dst_rel
-            updated.append({'row': r, 'col': c, 'image_url': '/' + dst_rel})
+            else:
+                dst_sticker.image_id = src_sticker.image_id
+            db.session.flush()
+            _cleanup_image_if_orphan(old_image)
+            updated.append({'row': r, 'col': c, 'image_url': image_url})
     db.session.commit()
     return jsonify(success=True, updated=updated)
 
@@ -409,8 +433,10 @@ def api_sticker_delete(sheet_id, row, col):
         return jsonify(success=False, error='Sheet not found.'), 404
     sticker = Sticker.query.filter_by(sheet_id=sheet_id, row=row, col=col).first()
     if sticker:
-        _delete_sticker_image(sticker)
+        image = sticker.image
         db.session.delete(sticker)
+        db.session.flush()
+        _cleanup_image_if_orphan(image)
         db.session.commit()
         audit_log('sticker_delete', user_id=current_user.id,
                   extra={'sheet_id': sheet_id, 'row': row, 'col': col})
@@ -435,27 +461,24 @@ def api_copy():
 
     src_sticker = Sticker.query.filter_by(
         sheet_id=src_sheet_id, row=src_row, col=src_col).first()
-    if src_sticker is None or not src_sticker.image_path:
+    if src_sticker is None:
         return jsonify(success=False, error='Source sticker has no image.'), 404
 
-    # Copy the image file
-    src_abs = os.path.join(current_app.root_path, src_sticker.image_path)
-    dst_rel, dst_abs = _sticker_path(dst_sheet_id, dst_row, dst_col)
-    os.makedirs(os.path.dirname(dst_abs), exist_ok=True)
-    import shutil
-    shutil.copy2(src_abs, dst_abs)
-
-    # Upsert destination sticker
+    # Upsert destination sticker — reuse same Image record, no file I/O
     dst_sticker = Sticker.query.filter_by(
         sheet_id=dst_sheet_id, row=dst_row, col=dst_col).first()
+    old_image = dst_sticker.image if dst_sticker else None
     if dst_sticker is None:
-        dst_sticker = Sticker(sheet_id=dst_sheet_id, row=dst_row, col=dst_col)
+        dst_sticker = Sticker(sheet_id=dst_sheet_id, row=dst_row, col=dst_col,
+                              image_id=src_sticker.image_id)
         db.session.add(dst_sticker)
-    dst_sticker.prompt = src_sticker.prompt
-    dst_sticker.image_path = dst_rel
+    else:
+        dst_sticker.image_id = src_sticker.image_id
+    db.session.flush()
+    _cleanup_image_if_orphan(old_image)
     db.session.commit()
 
-    return jsonify(success=True, image_url='/' + dst_rel)
+    return jsonify(success=True, image_url='/' + src_sticker.image.image_path)
 
 
 # ── User preferences ──────────────────────────────────────────────────────────
@@ -492,10 +515,10 @@ def api_copy_to_new_sheet():
 
     src_sticker = Sticker.query.filter_by(
         sheet_id=sheet_id, row=src_row, col=src_col).first()
-    if src_sticker is None or not src_sticker.image_path:
+    if src_sticker is None:
         return jsonify(success=False, error='Source sticker has no image.'), 404
 
-    # Create the new sheet
+    # Create the new sheet — reuse same Image record, no file I/O
     new_sheet = StickerSheet(
         user_id=current_user.id,
         name=f'Copy of {src_sheet.name}',
@@ -503,19 +526,10 @@ def api_copy_to_new_sheet():
         cols=src_sheet.cols,
     )
     db.session.add(new_sheet)
-    db.session.flush()  # get new_sheet.id
+    db.session.flush()
 
-    # Copy the image file to position (0, 0) in the new sheet
-    import shutil
-    src_abs = os.path.join(current_app.root_path, src_sticker.image_path)
-    dst_rel, dst_abs = _sticker_path(new_sheet.id, 0, 0)
-    os.makedirs(os.path.dirname(dst_abs), exist_ok=True)
-    shutil.copy2(src_abs, dst_abs)
-
-    new_sticker = Sticker(sheet_id=new_sheet.id, row=0, col=0)
-    new_sticker.prompt = src_sticker.prompt
-    new_sticker.image_path = dst_rel
-    db.session.add(new_sticker)
+    db.session.add(Sticker(sheet_id=new_sheet.id, row=0, col=0,
+                           image_id=src_sticker.image_id))
     db.session.commit()
 
     return jsonify(success=True, sheet_url=url_for('sheets_editor', sheet_id=new_sheet.id))
@@ -532,6 +546,191 @@ def api_set_user_provider():
     current_user.preferred_provider = provider
     db.session.commit()
     return jsonify(success=True, provider=provider)
+
+
+# ── Library ───────────────────────────────────────────────────────────────────
+
+@app.route('/library/')
+@login_required
+def library_list():
+    tags_param = request.args.get('tags', '').strip()
+    selected_tags = [t.strip() for t in tags_param.split(',') if t.strip()] if tags_param else []
+
+    if selected_tags:
+        images = (
+            db.session.query(Image)
+            .join(Tag)
+            .filter(Image.in_library == True, Tag.tag.in_(selected_tags))
+            .group_by(Image.id)
+            .having(db.func.count(db.func.distinct(Tag.tag)) == len(selected_tags))
+            .order_by(Image.created_at.desc())
+            .all()
+        )
+    else:
+        images = Image.query.filter_by(in_library=True).order_by(Image.created_at.desc()).all()
+
+    all_tags = [
+        row[0] for row in (
+            db.session.query(Tag.tag)
+            .join(Image)
+            .filter(Image.in_library == True)
+            .distinct()
+            .order_by(Tag.tag)
+            .all()
+        )
+    ]
+
+    return render_template('library/list.html', images=images,
+                           all_tags=all_tags, selected_tags=selected_tags)
+
+
+@app.route('/api/library/share/', methods=['POST'])
+@login_required
+def api_library_share():
+    data = request.get_json(force=True)
+    sheet_id = data.get('sheet_id')
+    row = data.get('row')
+    col = data.get('col')
+
+    sheet = _get_own_sheet_or_400(sheet_id)
+    if sheet is None:
+        return jsonify(success=False, error='Sheet not found.'), 404
+
+    sticker = Sticker.query.filter_by(sheet_id=sheet_id, row=row, col=col).first()
+    if sticker is None:
+        return jsonify(success=False, error='No sticker at that cell.'), 404
+
+    image = sticker.image
+    if image.in_library:
+        return jsonify(success=False, error='This sticker is already in the library.'), 409
+
+    image.in_library = True
+    existing_tags = {t.tag for t in image.tags}
+    for tag_text in _extract_tags(image.prompt or ''):
+        if tag_text not in existing_tags:
+            db.session.add(Tag(image_id=image.id, tag=tag_text))
+    db.session.commit()
+    audit_log('library_share', user_id=current_user.id, extra={'image_id': image.id})
+    return jsonify(success=True, image_id=image.id)
+
+
+@app.route('/api/sheets/', methods=['GET'])
+@login_required
+def api_user_sheets():
+    sheets = (StickerSheet.query.filter_by(user_id=current_user.id)
+              .order_by(StickerSheet.name).all())
+    return jsonify(success=True, sheets=[
+        {'id': s.id, 'name': s.name, 'rows': s.rows, 'cols': s.cols}
+        for s in sheets
+    ])
+
+
+@app.route('/api/library/<int:image_id>/add-to-sheet/', methods=['POST'])
+@login_required
+def api_library_add_to_sheet(image_id):
+    image = db.session.get(Image, image_id)
+    if image is None or not image.in_library:
+        return jsonify(success=False, error='Image not found in library.'), 404
+
+    data = request.get_json(force=True)
+
+    if data.get('new_sheet'):
+        name = ((data.get('name') or image.prompt or 'Library sticker') or '')[:50]
+        sheet = StickerSheet(user_id=current_user.id, name=name or 'Library sticker',
+                             rows=4, cols=6)
+        db.session.add(sheet)
+        db.session.flush()
+    else:
+        sheet = _get_own_sheet_or_400(data.get('sheet_id'))
+        if sheet is None:
+            return jsonify(success=False, error='Sheet not found.'), 404
+
+    row, col = _find_next_empty_cell(sheet)
+    if row is None:
+        # Sheet is full — create an overflow sheet with the same dimensions
+        sheet = StickerSheet(user_id=current_user.id,
+                             name=sheet.name + ' (overflow)',
+                             rows=sheet.rows, cols=sheet.cols)
+        db.session.add(sheet)
+        db.session.flush()
+        row, col = 0, 0
+
+    db.session.add(Sticker(sheet_id=sheet.id, row=row, col=col, image_id=image_id))
+    db.session.commit()
+    return jsonify(success=True, sheet_id=sheet.id,
+                   sheet_url=url_for('sheets_editor', sheet_id=sheet.id),
+                   row=row, col=col, image_url='/' + image.image_path)
+
+
+@app.route('/api/library/<int:image_id>/tags/', methods=['POST'])
+@login_required
+def api_library_add_tag(image_id):
+    import re as _re
+    image = db.session.get(Image, image_id)
+    if image is None or not image.in_library:
+        return jsonify(success=False, error='Image not found in library.'), 404
+    if not (current_user.is_admin or image.created_by_user_id == current_user.id):
+        return jsonify(success=False, error='Not authorised.'), 403
+
+    data = request.get_json(force=True)
+    tag_text = (data.get('tag') or '').strip().lower()
+    if len(tag_text) < 2 or len(tag_text) > 50:
+        return jsonify(success=False, error='Tag must be 2–50 characters.'), 400
+    if not _re.match(r'^[a-z0-9 \-]+$', tag_text):
+        return jsonify(success=False,
+                       error='Tag may only contain letters, digits, spaces, and hyphens.'), 400
+    if Tag.query.filter_by(image_id=image_id, tag=tag_text).first():
+        return jsonify(success=False, error='Tag already exists.'), 409
+
+    db.session.add(Tag(image_id=image_id, tag=tag_text))
+    db.session.commit()
+    return jsonify(success=True, tag=tag_text)
+
+
+@app.route('/api/library/<int:image_id>/tags/<tag>/', methods=['DELETE'])
+@login_required
+def api_library_remove_tag(image_id, tag):
+    image = db.session.get(Image, image_id)
+    if image is None or not image.in_library:
+        return jsonify(success=False, error='Image not found in library.'), 404
+    if not (current_user.is_admin or image.created_by_user_id == current_user.id):
+        return jsonify(success=False, error='Not authorised.'), 403
+
+    tag_record = Tag.query.filter_by(image_id=image_id, tag=tag.lower()).first()
+    if tag_record is None:
+        return jsonify(success=False, error='Tag not found.'), 404
+
+    db.session.delete(tag_record)
+    db.session.commit()
+    return jsonify(success=True)
+
+
+@app.route('/api/library/<int:image_id>/', methods=['DELETE'])
+@login_required
+def api_library_delete(image_id):
+    image = db.session.get(Image, image_id)
+    if image is None or not image.in_library:
+        return jsonify(success=False, error='Image not found in library.'), 404
+    if not (current_user.is_admin or image.created_by_user_id == current_user.id):
+        return jsonify(success=False, error='Not authorised.'), 403
+
+    Tag.query.filter_by(image_id=image_id).delete()
+
+    remaining = Sticker.query.filter_by(image_id=image_id).count()
+    if remaining > 0:
+        image.in_library = False
+    else:
+        if image.image_path:
+            abs_path = os.path.join(current_app.root_path, image.image_path)
+            try:
+                os.remove(abs_path)
+            except OSError:
+                pass
+        db.session.delete(image)
+
+    db.session.commit()
+    audit_log('library_delete', user_id=current_user.id, extra={'image_id': image_id})
+    return jsonify(success=True)
 
 
 # ── 2FA routes ────────────────────────────────────────────────────────────────
@@ -659,20 +858,49 @@ def _sticker_path(sheet_id, row, col, ext='png'):
     return rel, abs_path
 
 
-def _delete_sticker_image(sticker):
-    if sticker.image_path:
-        abs_path = os.path.join(current_app.root_path, sticker.image_path)
-        try:
-            os.remove(abs_path)
-        except OSError:
-            pass
+def _cleanup_image_if_orphan(image):
+    """Delete the image file and record when nothing references it and it is not in the library."""
+    if image is None or image.in_library:
+        return
+    remaining = Sticker.query.filter_by(image_id=image.id).count()
+    if remaining == 0:
+        if image.image_path:
+            abs_path = os.path.join(current_app.root_path, image.image_path)
+            try:
+                os.remove(abs_path)
+            except OSError:
+                pass
+        db.session.delete(image)
 
 
-def _delete_sheet_images(sheet):
-    import shutil
-    folder = os.path.join(current_app.root_path, 'static', 'sticker_images', str(sheet.id))
-    try:
-        shutil.rmtree(folder)
-    except OSError:
-        pass
+def _find_next_empty_cell(sheet):
+    """Return (row, col) of the first empty cell in row-major order, or (None, None)."""
+    occupied = {(s.row, s.col) for s in sheet.stickers}
+    for r in range(sheet.rows):
+        for c in range(sheet.cols):
+            if (r, c) not in occupied:
+                return r, c
+    return None, None
+
+
+_STOP_WORDS = frozenset({
+    'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
+    'been', 'that', 'this', 'these', 'those', 'it', 'its', 'sticker',
+    'image', 'picture', 'cute', 'cartoon', 'style', 'vector', 'high',
+    'quality', 'toddler', 'featuring', 'simple', 'white', 'background',
+})
+
+
+def _extract_tags(prompt):
+    """Return a sorted list of descriptive tag strings extracted from a prompt."""
+    import re
+    words = re.sub(r'[^a-z0-9\s]', '', (prompt or '').lower()).split()
+    seen = set()
+    tags = []
+    for word in words:
+        if len(word) >= 3 and word not in _STOP_WORDS and word not in seen:
+            seen.add(word)
+            tags.append(word)
+    return sorted(tags)
 

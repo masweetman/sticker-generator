@@ -59,7 +59,7 @@ class TestApiGenerate:
         with flask_app.app_context():
             s = Sticker.query.filter_by(sheet_id=sheet_a, row=0, col=0).first()
             assert s is not None
-            assert s.prompt == 'a cute cat'
+            assert s.image.prompt == 'a cute cat'
 
     def test_generate_openrouter_creates_sticker(self, client_a, sheet_a, image_dir):
         self._set_provider('openrouter', api_key='or-key-abc')
@@ -166,7 +166,7 @@ class TestApiUploadSticker:
         with flask_app.app_context():
             s = Sticker.query.filter_by(sheet_id=sheet_a, row=0, col=0).first()
             assert s is not None
-            assert s.prompt == 'uploaded cat'
+            assert s.image.prompt == 'uploaded cat'
 
     def test_upload_writes_file_to_disk(self, client_a, sheet_a, image_dir):
         _json(client_a, 'post', '/api/upload-sticker/',

@@ -4,7 +4,7 @@ from flask_admin import AdminIndexView
 from flask_login import current_user
 from wtforms import SelectField
 from app import db
-from app.models import User, Settings, StickerSheet, Sticker
+from app.models import User, Settings, StickerSheet, Sticker, Image, Tag
 
 
 class SecureAdminIndexView(AdminIndexView):
@@ -65,7 +65,20 @@ class UserView(SecureModelView):
     form_excluded_columns = ('password', 'sheets')
 
 
+class ImageAdmin(SecureModelView):
+    column_list = ('id', 'prompt', 'in_library', 'created_at', 'created_by')
+    column_filters = ('in_library',)
+    form_excluded_columns = ('stickers', 'tags', 'created_by')
+
+
+class TagAdmin(SecureModelView):
+    column_list = ('id', 'image_id', 'tag')
+    column_searchable_list = ('tag',)
+
+
 def register_admin_views(admin):
     admin.add_view(SettingsView(Settings, db.session, name='Settings'))
     admin.add_view(UserView(User, db.session, name='Users'))
     admin.add_view(SecureModelView(StickerSheet, db.session, name='Sheets'))
+    admin.add_view(ImageAdmin(Image, db.session, name='Images'))
+    admin.add_view(TagAdmin(Tag, db.session, name='Tags'))

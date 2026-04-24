@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import db as _db
-from app.models import User, Settings, StickerSheet, Sticker, DEFAULT_BOUNDING_PROMPT
+from app.models import User, Settings, StickerSheet, Sticker, Image, DEFAULT_BOUNDING_PROMPT
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -164,8 +164,11 @@ class TestStickerSheetModel:
         _db.session.commit()
         for r in range(2):
             for c in range(2):
+                img = Image(prompt='x', image_path='static/test.png')
+                _db.session.add(img)
+                _db.session.flush()
                 _db.session.add(Sticker(sheet_id=sheet.id, row=r, col=c,
-                                        prompt='x'))
+                                        image_id=img.id))
         _db.session.commit()
         assert Sticker.query.count() == 4
         _db.session.delete(sheet)
@@ -197,18 +200,25 @@ class TestStickerModel:
 
     def test_sticker_persists_correctly(self, app_ctx):
         sheet = self._make_sheet()
-        s = Sticker(sheet_id=sheet.id, row=1, col=2, prompt='cat')
+        img = Image(prompt='cat', image_path='static/test.png')
+        _db.session.add(img)
+        _db.session.flush()
+        s = Sticker(sheet_id=sheet.id, row=1, col=2, image_id=img.id)
         _db.session.add(s)
         _db.session.commit()
         stored = Sticker.query.filter_by(sheet_id=sheet.id, row=1, col=2).first()
         assert stored is not None
-        assert stored.prompt == 'cat'
+        assert stored.image.prompt == 'cat'
 
     def test_unique_constraint_same_cell_raises(self, app_ctx):
         sheet = self._make_sheet()
-        _db.session.add(Sticker(sheet_id=sheet.id, row=0, col=0, prompt='first'))
+        img1 = Image(prompt='first', image_path='static/a.png')
+        img2 = Image(prompt='second', image_path='static/b.png')
+        _db.session.add_all([img1, img2])
+        _db.session.flush()
+        _db.session.add(Sticker(sheet_id=sheet.id, row=0, col=0, image_id=img1.id))
         _db.session.commit()
-        _db.session.add(Sticker(sheet_id=sheet.id, row=0, col=0, prompt='second'))
+        _db.session.add(Sticker(sheet_id=sheet.id, row=0, col=0, image_id=img2.id))
         with pytest.raises(IntegrityError):
             _db.session.commit()
 
@@ -220,7 +230,11 @@ class TestStickerModel:
         sheet2 = StickerSheet(user_id=u2.id, name='S2', rows=4, cols=4)
         _db.session.add(sheet2)
         _db.session.commit()
-        _db.session.add(Sticker(sheet_id=sheet.id, row=0, col=0, prompt='a'))
-        _db.session.add(Sticker(sheet_id=sheet2.id, row=0, col=0, prompt='b'))
+        img_a = Image(prompt='a', image_path='static/a.png')
+        img_b = Image(prompt='b', image_path='static/b.png')
+        _db.session.add_all([img_a, img_b])
+        _db.session.flush()
+        _db.session.add(Sticker(sheet_id=sheet.id, row=0, col=0, image_id=img_a.id))
+        _db.session.add(Sticker(sheet_id=sheet2.id, row=0, col=0, image_id=img_b.id))
         _db.session.commit()  # should not raise
         assert Sticker.query.count() == 2

@@ -128,6 +128,7 @@
   var btnCopySticker = document.getElementById('btn-copy-sticker');
   var btnCopyAll = document.getElementById('btn-copy-all');
   var btnCopyToNewSheet = document.getElementById('btn-copy-to-new-sheet');
+  var btnShareLibrary = document.getElementById('btn-share-library');
   var btnDeleteSticker = document.getElementById('btn-delete-sticker');
   var btnPasteSticker = document.getElementById('btn-paste-sticker');
 
@@ -552,6 +553,39 @@
     })
     .catch(function (e) { alert('Network error: ' + e); });
   });
+
+  // ── Share to Library ──────────────────────────────────────────────────────
+  if (btnShareLibrary) {
+    btnShareLibrary.addEventListener('click', function () {
+      var row = parseInt(activeCell.dataset.row, 10);
+      var col = parseInt(activeCell.dataset.col, 10);
+      btnShareLibrary.disabled = true;
+
+      fetch('/api/library/share/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ sheet_id: sheetId, row: row, col: col })
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.success) {
+          btnShareLibrary.textContent = '✓ Shared!';
+          btnShareLibrary.classList.remove('btn-success');
+          btnShareLibrary.classList.add('btn-default');
+        } else {
+          alert('Could not share: ' + (data.error || 'Unknown error'));
+          btnShareLibrary.disabled = false;
+        }
+      })
+      .catch(function (e) {
+        alert('Network error: ' + e);
+        btnShareLibrary.disabled = false;
+      });
+    });
+  }
 
   // ── Copy to new sheet ─────────────────────────────────────────────────────
   btnCopyToNewSheet.addEventListener('click', function () {

@@ -63,6 +63,31 @@ class Settings(db.Model):
         return row
 
 
+class Image(db.Model):
+    """Stores the generated image file path and prompt. Shared across sticker cells."""
+    id = db.Column(db.Integer, primary_key=True)
+    prompt = db.Column(db.Text)
+    image_path = db.Column(db.String(500))
+    in_library = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    stickers = db.relationship('Sticker', back_populates='image')
+    tags = db.relationship('Tag', backref='image', cascade='all, delete-orphan')
+    created_by = db.relationship('User', foreign_keys=[created_by_user_id])
+
+
+class Tag(db.Model):
+    """Descriptive tags attached to library images."""
+    id = db.Column(db.Integer, primary_key=True)
+    image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    tag = db.Column(db.String(50), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('image_id', 'tag', name='uq_image_tag'),
+    )
+
+
 class StickerSheet(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -75,12 +100,14 @@ class StickerSheet(db.Model):
 
 
 class Sticker(db.Model):
+    """A grid cell on a StickerSheet, referencing an Image."""
     id = db.Column(db.Integer, primary_key=True)
     sheet_id = db.Column(db.Integer, db.ForeignKey('sticker_sheet.id'), nullable=False)
     row = db.Column(db.Integer, nullable=False)
     col = db.Column(db.Integer, nullable=False)
-    prompt = db.Column(db.Text)
-    image_path = db.Column(db.String(500))
+    image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+
+    image = db.relationship('Image', back_populates='stickers')
 
     __table_args__ = (
         db.UniqueConstraint('sheet_id', 'row', 'col', name='uq_sticker_position'),
