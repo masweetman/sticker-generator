@@ -20,10 +20,16 @@ class Config(object):
     SESSION_COOKIE_SAMESITE = 'Lax'
     PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
 
+    # Remember-me cookie (30-day persistent login)
+    REMEMBER_COOKIE_DURATION = timedelta(days=30)
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = 'Lax'
+
 
 class ProductionConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///application.db')
     SESSION_COOKIE_SECURE = True
+    REMEMBER_COOKIE_SECURE = True
 
     @staticmethod
     def init_app():

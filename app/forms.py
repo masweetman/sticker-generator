@@ -1,11 +1,12 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, IntegerField
+from wtforms import StringField, PasswordField, IntegerField, BooleanField
 from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional, Length
 
 
 class LoginForm(FlaskForm):
     user = StringField('Username', validators=[DataRequired()])
     password = PasswordField('Password', validators=[DataRequired()])
+    remember_me = BooleanField('Stay logged in for 30 days')
 
 
 class TwoFactorVerifyForm(FlaskForm):

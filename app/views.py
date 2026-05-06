@@ -46,11 +46,12 @@ def login():
         user = User.query.filter_by(user=form.user.data).first()
         if user and check_password_hash(user.password, form.password.data):
             if user.two_factor_enabled:
-                # Store pending user ID; require TOTP before creating full session
+                # Store pending user ID and remember preference; require TOTP before creating full session
                 session['_2fa_pending_user_id'] = user.id
+                session['_2fa_pending_remember'] = form.remember_me.data
                 audit_log('login_2fa_challenge', user_id=user.id)
                 return redirect(url_for('login_2fa'))
-            login_user(user)
+            login_user(user, remember=form.remember_me.data)
             audit_log('login_success', user_id=user.id)
             return redirect(url_for('sheets_list'))
         audit_log('login_failure', extra={'username': form.user.data})
@@ -751,8 +752,9 @@ def login_2fa():
             return redirect(url_for('login'))
         totp = pyotp.TOTP(user.two_factor_secret)
         if totp.verify(form.code.data, valid_window=1):
+            remember = session.pop('_2fa_pending_remember', False)
             session.pop('_2fa_pending_user_id', None)
-            login_user(user)
+            login_user(user, remember=remember)
             audit_log('login_success_2fa', user_id=user.id)
             return redirect(url_for('sheets_list'))
         audit_log('login_2fa_invalid_code', user_id=user.id)
